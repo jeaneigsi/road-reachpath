@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     environment: str = "local"
     dry_run: bool = True
     auto_execute: bool = True
+    require_auth: bool = False
+    api_keys: str = ""
     database_url: str = "sqlite:///./reachpath.db"
     argus_url: str = "http://127.0.0.1:8000"
     searchswarm_url: str = "http://127.0.0.1:8012"

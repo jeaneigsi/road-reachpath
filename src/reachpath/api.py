@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, status
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, status
 
 from .domain import ResearchRequest, ResearchRun, ResearchRunResponse, RunStatus
 from .orchestrator import ProspectingOrchestrator
@@ -16,6 +16,16 @@ def _workspace(value: str) -> str:
     if not 1 <= len(value) <= 128:
         raise HTTPException(status_code=400, detail="X-Workspace-ID must contain 1 to 128 characters")
     return value
+
+
+def _api_key_workspace(settings: Any, token: str) -> str | None:
+    for entry in settings.api_keys.split(","):
+        if "=" not in entry:
+            continue
+        configured_token, workspace = entry.split("=", 1)
+        if configured_token.strip() == token:
+            return workspace.strip() or None
+    return None
 
 
 def _response(run: ResearchRun, workspace_id: str) -> ResearchRunResponse:
@@ -51,6 +61,25 @@ def create_app(settings: Any | None = None) -> FastAPI:
     app.state.store = RunStore(settings.database_url)
     app.state.orchestrator = ProspectingOrchestrator(settings)
 
+    async def workspace_context(
+        workspace_header: str = Header(default="", alias="X-Workspace-ID"),
+        authorization: str | None = Header(default=None, alias="Authorization"),
+        api_key: str | None = Header(default=None, alias="X-API-Key"),
+    ) -> str:
+        if not settings.require_auth:
+            return _workspace(workspace_header or "local")
+        token = api_key
+        if not token and authorization and authorization.lower().startswith("bearer "):
+            token = authorization[7:].strip()
+        if not token:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        mapped_workspace = _api_key_workspace(settings, token)
+        if mapped_workspace is None:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+        if workspace_header and _workspace(workspace_header) != mapped_workspace:
+            raise HTTPException(status_code=403, detail="Workspace does not match API key")
+        return mapped_workspace
+
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "service": "reachpath"}
@@ -85,10 +114,9 @@ def create_app(settings: Any | None = None) -> FastAPI:
     async def create_research(
         request: ResearchRequest,
         background_tasks: BackgroundTasks,
-        workspace_header: str = Header(default="local", alias="X-Workspace-ID"),
+        workspace_id: str = Depends(workspace_context),
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ) -> ResearchRunResponse:
-        workspace_id = _workspace(workspace_header)
         if idempotency_key is not None:
             idempotency_key = idempotency_key.strip()
             if not idempotency_key:
@@ -108,9 +136,8 @@ def create_app(settings: Any | None = None) -> FastAPI:
     @app.get("/v1/research/runs/{run_id}", response_model=ResearchRunResponse)
     async def get_research(
         run_id: UUID,
-        workspace_header: str = Header(default="local", alias="X-Workspace-ID"),
+        workspace_id: str = Depends(workspace_context),
     ) -> ResearchRunResponse:
-        workspace_id = _workspace(workspace_header)
         run = app.state.store.get(workspace_id, run_id)
         if run is None:
             raise HTTPException(status_code=404, detail="Research run not found")
@@ -119,9 +146,8 @@ def create_app(settings: Any | None = None) -> FastAPI:
     @app.post("/v1/research/runs/{run_id}/cancel", response_model=ResearchRunResponse)
     async def cancel_research(
         run_id: UUID,
-        workspace_header: str = Header(default="local", alias="X-Workspace-ID"),
+        workspace_id: str = Depends(workspace_context),
     ) -> ResearchRunResponse:
-        workspace_id = _workspace(workspace_header)
         run = app.state.store.get(workspace_id, run_id)
         if run is None:
             raise HTTPException(status_code=404, detail="Research run not found")

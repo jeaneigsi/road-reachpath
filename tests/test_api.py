@@ -78,3 +78,22 @@ def test_worker_drains_queued_run(tmp_path) -> None:
     assert response.json()["status"] == "queued"
     assert asyncio.run(drain_once(application)) == 1
     assert api.get(f"/v1/research/runs/{run_id}").json()["status"] == "completed"
+
+
+def test_production_auth_scopes_workspace(tmp_path) -> None:
+    settings = Settings(
+        database_url=f"sqlite:///{tmp_path / 'auth.db'}",
+        dry_run=True,
+        require_auth=True,
+        api_keys="secret-acme=acme",
+    )
+    api = TestClient(create_app(settings))
+    payload = {"person": "Nadia Karim", "objective": "Obtenir un rendez-vous", "dry_run": True}
+    assert api.post("/v1/research/runs", json=payload).status_code == 401
+    headers = {"Authorization": "Bearer secret-acme", "X-Workspace-ID": "acme"}
+    response = api.post("/v1/research/runs", json=payload, headers=headers)
+    assert response.status_code == 202
+    mismatch = api.post(
+        "/v1/research/runs", json=payload, headers={**headers, "X-Workspace-ID": "other"}
+    )
+    assert mismatch.status_code == 403

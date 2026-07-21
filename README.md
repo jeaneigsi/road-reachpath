@@ -39,6 +39,11 @@ configurer `REACHPATH_DRY_RUN=false`, les URL des trois services et leurs clés
 d'API. Les données doivent rester publiques, professionnelles ou explicitement
 autorisées.
 
+En production, `REACHPATH_REQUIRE_AUTH=true` active les clés API ReachPath. Le
+format est `token=workspace` (plusieurs entrées séparées par des virgules). Le
+token peut être envoyé avec `Authorization: Bearer <token>` ou `X-API-Key` ; un
+workspace différent de celui associé à la clé est refusé.
+
 ## Worker et Docker
 
 En local, l'API exécute les tâches en arrière-plan. En production, désactiver

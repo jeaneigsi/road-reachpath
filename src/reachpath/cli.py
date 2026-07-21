@@ -17,12 +17,15 @@ def research(
     company: str | None = typer.Option(None),
     api_url: str = typer.Option("http://127.0.0.1:8020"),
     workspace_id: str = typer.Option("local", help="Organisation ReachPath"),
+    api_key: str | None = typer.Option(None, help="Clé API ReachPath (Bearer)"),
     dry_run: bool = typer.Option(True, "--dry-run/--live", help="Simuler ou appeler les services"),
     wait: bool = typer.Option(True, "--wait/--no-wait", help="Attendre le dossier final"),
     timeout_seconds: int = typer.Option(300, min=1, max=86_400),
 ) -> None:
     payload = {"person": person, "company": company, "objective": objective, "dry_run": dry_run}
     headers = {"X-Workspace-ID": workspace_id}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     with httpx.Client(base_url=api_url.rstrip("/"), headers=headers, timeout=30) as client:
         response = client.post("/v1/research/runs", json=payload)
         response.raise_for_status()
