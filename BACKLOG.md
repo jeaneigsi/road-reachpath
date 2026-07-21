@@ -79,7 +79,7 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 
 - [ ] Plans, crédits, facturation et limites par fonctionnalité.
 - [ ] Stripe ou fournisseur équivalent en environnement de test puis production.
-- [ ] Tableau de coûts réel par recherche et par connecteur.
+- [x] Tableau de coûts réel par recherche et ventilation SearchSwarm/ARGUS/ReportForge.
 - [ ] Jeux de données anonymisés et benchmarks de précision.
 - [ ] Tests de charge, reprise après panne et tests de sécurité.
 - [ ] Documentation utilisateur, API, exploitation et support.

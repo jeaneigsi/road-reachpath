@@ -90,7 +90,7 @@ async def _execute(app: FastAPI, run_id: UUID, workspace_id: str) -> None:
             workspace_id=workspace_id,
             run_id=str(run_id),
         )
-        usage = UsageMetrics.model_validate(result.get("evidence", {}).get("usage", {}) or {})
+        usage = UsageMetrics.model_validate(result.get("usage") or {})
         dossier_status = str((result.get("dossier") or {}).get("status", "")).lower()
         run_status = (
             RunStatus.NEEDS_CLARIFICATION

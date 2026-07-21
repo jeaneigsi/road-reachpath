@@ -21,6 +21,7 @@ class ResearchState(TypedDict, total=False):
     dossier: dict[str, Any]
     strategies: dict[str, Any]
     report: dict[str, Any]
+    argus_result: dict[str, Any]
 
 
 class ProspectingOrchestrator:
@@ -262,9 +263,21 @@ class ProspectingOrchestrator:
                 "run_id": run_id,
             }
         )
+        usage_breakdown = {
+            "searchswarm": (result.get("evidence") or {}).get("usage", {}) or {},
+            "argus": (result.get("argus_result") or {}).get("usage", {}) or {},
+            "reportforge": (result.get("report") or {}).get("usage", {}) or {},
+        }
+        usage = {
+            key: sum(float(breakdown.get(key, 0) or 0) for breakdown in usage_breakdown.values())
+            for key in ("search_calls", "model_calls", "input_tokens", "output_tokens", "cost_usd", "duration_ms")
+        }
         return {
             "evidence": result.get("evidence"),
             "dossier": result.get("dossier"),
+            "argus_result": result.get("argus_result"),
             "strategies": result.get("strategies"),
             "report": result.get("report"),
+            "usage": usage,
+            "usage_breakdown": usage_breakdown,
         }

@@ -113,5 +113,7 @@ async def test_real_service_contract_flow_uses_workspace_and_auth_headers() -> N
     assert result["dossier"]["dossier_id"] == "argus-1"
     assert result["dossier"]["relationship_paths"] == [{"degree": 2, "steps": []}]
     assert result["dossier"]["contact_strategy"]["recommendation"] == "warm_introduction"
+    assert set(result["usage_breakdown"]) == {"searchswarm", "argus", "reportforge"}
+    assert result["usage"]["cost_usd"] == 0
     assert len(result["strategies"]["scenarios"]) == 3
     assert result["report"]["report_run_id"] == "report-1"

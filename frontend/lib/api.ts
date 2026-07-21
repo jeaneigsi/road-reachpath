@@ -26,6 +26,8 @@ export type ResearchRun = {
       limitations?: string[];
       evidence_count?: number;
     };
+    usage?: { cost_usd?: number; search_calls?: number; model_calls?: number };
+    usage_breakdown?: Record<string, { cost_usd?: number }>;
     report?: Record<string, unknown>;
   };
   error?: string;
