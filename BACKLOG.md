@@ -47,7 +47,7 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 - [x] Journal d'audit et export des traitements par workspace.
 - [ ] Opt-out, suppression et export des données d'une personne.
 - [x] Quotas par organisation, estimation des coûts et arrêt sur budget.
-- [ ] Rate limiting, timeouts, retries bornés et circuit breakers.
+- [x] Timeouts et retries bornés sur les appels interservices ; rate limiting et circuit breakers restent à livrer.
 - [x] Logs structurés, métriques, traces et corrélation interservices.
 - [ ] Rétention configurable et suppression des artefacts temporaires.
 

@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     searchswarm_api_key: str | None = None
     reportforge_api_key: str | None = None
     service_poll_interval_seconds: float = 1.0
+    service_max_retries: int = 2
+    service_retry_backoff_seconds: float = 0.25
     monthly_budget_usd: float = 100.0
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 

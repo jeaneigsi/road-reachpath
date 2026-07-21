@@ -114,6 +114,10 @@ Le compose démarre PostgreSQL, l'API sur `127.0.0.1:8020` et un worker. La base
 n'est jamais publiée directement. Caddy ou Nginx doit rester le seul point
 d'entrée Internet.
 
+Les appels vers SearchSwarm, ARGUS et ReportForge utilisent des retries bornés
+sur les erreurs transitoires (`429`, `5xx`, réseau). Les paramètres sont
+`REACHPATH_SERVICE_MAX_RETRIES` et `REACHPATH_SERVICE_RETRY_BACKOFF_SECONDS`.
+
 ## Interface web
 
 Le frontend Next.js se trouve dans `frontend/`. Il utilise un proxy serveur

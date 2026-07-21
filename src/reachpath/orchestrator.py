@@ -30,12 +30,21 @@ class ProspectingOrchestrator:
             settings.searchswarm_url,
             settings.searchswarm_api_key,
             auth_mode="bearer",
+            max_retries=settings.service_max_retries,
+            retry_backoff_seconds=settings.service_retry_backoff_seconds,
         )
-        self.argus = ServiceClient(settings.argus_url, settings.argus_api_key)
+        self.argus = ServiceClient(
+            settings.argus_url,
+            settings.argus_api_key,
+            max_retries=settings.service_max_retries,
+            retry_backoff_seconds=settings.service_retry_backoff_seconds,
+        )
         self.reportforge = ServiceClient(
             settings.reportforge_url,
             settings.reportforge_api_key,
             auth_mode="bearer",
+            max_retries=settings.service_max_retries,
+            retry_backoff_seconds=settings.service_retry_backoff_seconds,
         )
 
     def _is_dry_run(self, request: dict[str, Any]) -> bool:
