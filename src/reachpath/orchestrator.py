@@ -185,7 +185,12 @@ class ProspectingOrchestrator:
             )
             status = str(snapshot.get("status", "")).lower()
             if status in {"completed", "published", "failed", "cancelled", "error"}:
-                return {"report": snapshot}
+                artifacts = await self.reportforge.get(
+                    f"/api/v1/report-jobs/{report_run_id}/artifacts",
+                    workspace_id=state.get("workspace_id"),
+                    timeout=30,
+                )
+                return {"report": {**snapshot, "artifacts": artifacts}}
             if time.monotonic() >= deadline:
                 raise TimeoutError("ReportForge job exceeded the requested duration")
             await asyncio.sleep(self.settings.service_poll_interval_seconds)

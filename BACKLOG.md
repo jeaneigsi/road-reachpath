@@ -71,7 +71,7 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 - [ ] Carte des relations et filtres par profondeur.
 - [ ] Éditeur de stratégie et de messages.
 - [ ] Export et partage sécurisé du rapport.
-- [ ] Historique, recherche et archivage des dossiers.
+- [x] Historique paginé et récupération séparée du dossier, de la stratégie et du rapport.
 - [ ] Gestion des intégrations CRM et des permissions.
 
 ## P2 — monétisation et qualité

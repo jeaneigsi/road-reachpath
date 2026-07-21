@@ -10,6 +10,7 @@ from .crm import build_argus_bundle, parse_csv
 from .domain import (
     CrmImportResponse,
     ResearchRequest,
+    ResearchRunListResponse,
     ResearchRun,
     ResearchRunResponse,
     RunStatus,
@@ -136,11 +137,14 @@ def create_app(settings: Any | None = None) -> FastAPI:
 
     @app.get("/v1/usage/quota")
     async def usage_quota(workspace_id: str = Depends(workspace_context)) -> dict[str, float | str]:
+        from datetime import datetime, timezone
+
         consumed = app.state.store.monthly_cost(workspace_id)
         budget = float(settings.monthly_budget_usd)
+        now = datetime.now(timezone.utc)
         return {
             "workspace_id": workspace_id,
-            "period": "all-records-until-monthly-rollup-is-enabled",
+            "period": f"{now.year:04d}-{now.month:02d}",
             "consumed_usd": consumed,
             "budget_usd": budget,
             "remaining_usd": max(0.0, round(budget - consumed, 6)),
@@ -211,6 +215,17 @@ def create_app(settings: Any | None = None) -> FastAPI:
         if created and app.state.settings.auto_execute:
             background_tasks.add_task(_execute, app, run.id, workspace_id)
         return _response(run, workspace_id)
+
+    @app.get("/v1/research/runs", response_model=ResearchRunListResponse)
+    async def list_research(
+        workspace_id: str = Depends(workspace_context),
+        limit: int = 50,
+    ) -> ResearchRunListResponse:
+        if not 1 <= limit <= 200:
+            raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
+        return ResearchRunListResponse(
+            items=[_response(run, workspace_id) for run in app.state.store.list_runs(workspace_id, limit)]
+        )
 
     @app.get("/v1/research/runs/{run_id}", response_model=ResearchRunResponse)
     async def get_research(

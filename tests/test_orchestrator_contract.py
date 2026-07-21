@@ -54,6 +54,8 @@ async def test_real_service_contract_flow_uses_workspace_and_auth_headers() -> N
             assert request.headers["Authorization"] == "Bearer report-key"
             if request.method == "POST":
                 return httpx.Response(202, json={"report_run_id": "report-1", "status": "queued"})
+            if request.url.path.endswith("/artifacts"):
+                return httpx.Response(200, json={"items": []})
             return httpx.Response(200, json={"report_run_id": "report-1", "status": "completed"})
         return httpx.Response(404)
 

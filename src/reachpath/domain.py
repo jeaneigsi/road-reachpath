@@ -76,3 +76,7 @@ class ResearchRunResponse(BaseModel):
     result: dict[str, Any] | None = None
     error: str | None = None
     usage: UsageMetrics = Field(default_factory=UsageMetrics)
+
+
+class ResearchRunListResponse(BaseModel):
+    items: list[ResearchRunResponse]

@@ -127,6 +127,16 @@ class RunStore:
             )
             return self._to_domain(record) if record else None
 
+    def list_runs(self, workspace_id: str, limit: int = 50) -> list[ResearchRun]:
+        with Session(self.engine) as session:
+            records = session.scalars(
+                select(ResearchRunRecord)
+                .where(ResearchRunRecord.workspace_id == workspace_id)
+                .order_by(ResearchRunRecord.created_at.desc())
+                .limit(limit)
+            ).all()
+            return [self._to_domain(record) for record in records]
+
     def claim(self, workspace_id: str, run_id: UUID) -> ResearchRun | None:
         """Atomically claim a queued run for one API task or worker."""
         with Session(self.engine) as session:
@@ -247,9 +257,14 @@ class RunStore:
             return self._to_domain(record)
 
     def monthly_cost(self, workspace_id: str) -> float:
+        now = datetime.now(timezone.utc)
+        start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
         with Session(self.engine) as session:
             records = session.scalars(
-                select(ResearchRunRecord).where(ResearchRunRecord.workspace_id == workspace_id)
+                select(ResearchRunRecord).where(
+                    ResearchRunRecord.workspace_id == workspace_id,
+                    ResearchRunRecord.created_at >= start,
+                )
             ).all()
             return round(sum(float((record.usage_json or {}).get("cost_usd", 0)) for record in records), 6)
 

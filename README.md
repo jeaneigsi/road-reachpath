@@ -57,6 +57,7 @@ un statut `authorized`. La lecture se fait via
 
 Après une recherche terminée, ReachPath expose aussi :
 
+- `GET /v1/research/runs?limit=50`
 - `GET /v1/research/runs/{run_id}/dossier`
 - `GET /v1/research/runs/{run_id}/strategy`
 - `GET /v1/research/runs/{run_id}/report`
