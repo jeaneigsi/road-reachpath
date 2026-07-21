@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     reportforge_api_key: str | None = None
     service_poll_interval_seconds: float = 1.0
     monthly_budget_usd: float = 100.0
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
 
 @lru_cache

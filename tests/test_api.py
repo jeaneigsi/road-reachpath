@@ -20,6 +20,25 @@ def test_health(tmp_path) -> None:
     assert response.headers["X-Correlation-ID"] == "req-test"
 
 
+def test_frontend_origin_is_allowed_by_cors(tmp_path) -> None:
+    settings = Settings(
+        database_url=f"sqlite:///{tmp_path / 'cors.db'}",
+        dry_run=True,
+        cors_origins="http://localhost:3000",
+    )
+    api = TestClient(create_app(settings))
+    response = api.options(
+        "/v1/research/runs",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,x-workspace-id",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
 def test_create_research_is_durable_and_scoped(tmp_path) -> None:
     api = client(tmp_path)
     headers = {"X-Workspace-ID": "acme", "Idempotency-Key": "research-001"}

@@ -88,3 +88,21 @@ make compose-up
 Le compose démarre PostgreSQL, l'API sur `127.0.0.1:8020` et un worker. La base
 n'est jamais publiée directement. Caddy ou Nginx doit rester le seul point
 d'entrée Internet.
+
+## Interface web
+
+Le frontend Next.js se trouve dans `frontend/`. Il utilise un proxy serveur
+pour que la clé ReachPath ne soit jamais exposée au navigateur :
+
+```bash
+cd frontend
+cp .env.example .env.local
+npm install
+npm run dev
+```
+
+Ouvrir `http://localhost:3000`. En local, laisser `REACHPATH_DRY_RUN=true` sur
+l'API pour obtenir un dossier simulé sans dépendre des trois services externes.
+En compose, renseigner `REACHPATH_FRONTEND_API_KEY` avec une clé du workspace
+créée par l'endpoint admin, puis configurer `REACHPATH_CORS_ORIGINS` avec
+l'origine publique du frontend.

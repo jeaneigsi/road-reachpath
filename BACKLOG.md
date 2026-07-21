@@ -18,7 +18,7 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 - [x] Écrire le contrat de recherche : cible, contexte, objectif, contraintes et limites.
 - [x] Définir les états d'une recherche : `queued`, `running`, `needs_clarification`, `completed`, `failed`, `cancelled`.
 - [x] Créer le backend FastAPI et sa configuration par environnement.
-- [ ] Ajouter PostgreSQL, migrations et séparation par organisation.
+- [x] Ajouter PostgreSQL, migrations et séparation par organisation.
 - [x] Créer les modèles R0 de `ResearchRun`, `Evidence`, `RelationshipPath` et `ReportArtifact` ; les entités commerciales restantes suivent avec l'authentification.
 - [x] Ajouter les endpoints de création, suivi, annulation et readiness d'une recherche.
 - [x] Ajouter idempotency keys, scoping workspace et erreurs HTTP bornées.
@@ -46,9 +46,9 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 - [ ] Chiffrement des secrets et rotation des clés de service.
 - [ ] Journal d'audit et export des traitements.
 - [ ] Opt-out, suppression et export des données d'une personne.
-- [ ] Quotas par organisation, estimation des coûts et arrêt sur budget.
+- [x] Quotas par organisation, estimation des coûts et arrêt sur budget.
 - [ ] Rate limiting, timeouts, retries bornés et circuit breakers.
-- [ ] Logs structurés, métriques, traces et corrélation interservices.
+- [x] Logs structurés, métriques, traces et corrélation interservices.
 - [ ] Rétention configurable et suppression des artefacts temporaires.
 
 ## P1 — intégrations et API commerciale
@@ -58,15 +58,15 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 - [ ] Connecteur OAuth Salesforce.
 - [ ] Connecteur OAuth Pipedrive.
 - [ ] Synchronisation périodique et webhooks entrants.
-- [ ] API publique versionnée, clés d'API et scopes.
+- [x] API publique versionnée et clés d'API ; les scopes RBAC restent à livrer.
 - [ ] Webhooks ReachPath pour fin de recherche et rapport disponible.
 - [ ] SDK Python et TypeScript générés depuis OpenAPI.
 
 ## P2 — frontend web
 
 - [ ] Authentification et onboarding organisation.
-- [ ] Formulaire de nouvelle recherche avec clarification guidée.
-- [ ] Vue temps réel de progression et consommation du budget.
+- [x] Formulaire de nouvelle recherche avec clarification guidée de premier niveau.
+- [x] Vue temps réel de progression de la recherche.
 - [ ] Vue dossier personne/entreprise avec preuves et niveaux de confiance.
 - [ ] Carte des relations et filtres par profondeur.
 - [ ] Éditeur de stratégie et de messages.
@@ -82,7 +82,7 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 - [ ] Jeux de données anonymisés et benchmarks de précision.
 - [ ] Tests de charge, reprise après panne et tests de sécurité.
 - [ ] Documentation utilisateur, API, exploitation et support.
-- [ ] Déploiement Docker/Caddy sur VPS avec sauvegardes et rollback.
+- [x] Packaging Docker/Compose VPS ; Caddy, sauvegardes et rollback restent à livrer.
 - [ ] CI/CD, migrations contrôlées et procédure de release.
 - [ ] Préparation commerciale : DPA, politique de confidentialité, CGU et limites d'usage.
 

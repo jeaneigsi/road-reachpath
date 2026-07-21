@@ -22,6 +22,7 @@ services:
       REACHPATH_DRY_RUN: ${REACHPATH_DRY_RUN:-false}
       REACHPATH_AUTO_EXECUTE: "false"
       REACHPATH_REQUIRE_AUTH: "true"
+      REACHPATH_CORS_ORIGINS: ${REACHPATH_CORS_ORIGINS:-http://localhost:3000}
       REACHPATH_API_KEYS: ${REACHPATH_API_KEYS:?set REACHPATH_API_KEYS in .env}
       REACHPATH_ADMIN_API_KEYS: ${REACHPATH_ADMIN_API_KEYS:?set REACHPATH_ADMIN_API_KEYS in .env}
       REACHPATH_DATABASE_URL: postgresql+psycopg://${REACHPATH_POSTGRES_USER:-reachpath}:${REACHPATH_POSTGRES_PASSWORD}@postgres:5432/${REACHPATH_POSTGRES_DB:-reachpath}
@@ -46,6 +47,7 @@ services:
       REACHPATH_DRY_RUN: ${REACHPATH_DRY_RUN:-false}
       REACHPATH_AUTO_EXECUTE: "false"
       REACHPATH_REQUIRE_AUTH: "true"
+      REACHPATH_CORS_ORIGINS: ${REACHPATH_CORS_ORIGINS:-http://localhost:3000}
       REACHPATH_API_KEYS: ${REACHPATH_API_KEYS:?set REACHPATH_API_KEYS in .env}
       REACHPATH_ADMIN_API_KEYS: ${REACHPATH_ADMIN_API_KEYS:?set REACHPATH_ADMIN_API_KEYS in .env}
       REACHPATH_DATABASE_URL: postgresql+psycopg://${REACHPATH_POSTGRES_USER:-reachpath}:${REACHPATH_POSTGRES_PASSWORD}@postgres:5432/${REACHPATH_POSTGRES_DB:-reachpath}
@@ -58,6 +60,22 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        REACHPATH_API_URL: ${REACHPATH_FRONTEND_BUILD_API_URL:-http://api:8020}
+    restart: unless-stopped
+    environment:
+      REACHPATH_API_URL: ${REACHPATH_FRONTEND_API_URL:-http://api:8020}
+      REACHPATH_API_KEY: ${REACHPATH_FRONTEND_API_KEY:?set REACHPATH_FRONTEND_API_KEY in .env}
+      REACHPATH_WORKSPACE_ID: ${REACHPATH_FRONTEND_WORKSPACE_ID:-default}
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "127.0.0.1:3000:3000"
 
 volumes:
   reachpath-postgres:

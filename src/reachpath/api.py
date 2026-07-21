@@ -5,6 +5,7 @@ from uuid import UUID
 
 import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile, status
+from fastapi.middleware.cors import CORSMiddleware
 
 from .crm import build_argus_bundle, parse_csv
 from .domain import (
@@ -85,6 +86,14 @@ async def _execute(app: FastAPI, run_id: UUID, workspace_id: str) -> None:
 def create_app(settings: Any | None = None) -> FastAPI:
     settings = settings or get_settings()
     app = FastAPI(title="ReachPath API", version="0.1.0")
+    cors_origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-API-Key", "X-Workspace-ID"],
+    )
     app.state.settings = settings
     app.state.store = RunStore(settings.database_url)
     app.state.orchestrator = ProspectingOrchestrator(settings)
