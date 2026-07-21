@@ -1,11 +1,15 @@
 import asyncio
+from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from reachpath.api import create_app
 from reachpath.domain import UsageMetrics
 from reachpath.settings import Settings
 from reachpath.worker import drain_once
+from reachpath.store import ResearchRunRecord
 
 
 def client(tmp_path):
@@ -25,6 +29,26 @@ def test_metrics_surface_is_available_in_local_mode(tmp_path) -> None:
     response = client(tmp_path).get("/metrics")
     assert response.status_code == 200
     assert "reachpath_http_requests_total" in response.text
+
+
+def test_admin_retention_purges_only_old_terminal_runs(tmp_path) -> None:
+    application = create_app(Settings(database_url=f"sqlite:///{tmp_path / 'retention.db'}"))
+    api = TestClient(application)
+    created = api.post(
+        "/v1/research/runs",
+        json={"person": "Nadia Karim", "objective": "Obtenir un rendez-vous", "dry_run": True},
+    )
+    run_id = created.json()["run_id"]
+    with Session(application.state.store.engine) as session:
+        record = session.scalar(select(ResearchRunRecord).where(ResearchRunRecord.id == run_id))
+        assert record is not None
+        record.updated_at = datetime.now(timezone.utc) - timedelta(days=31)
+        session.commit()
+    assert api.post("/v1/admin/retention/purge?older_than_days=0").status_code == 400
+    purged = api.post("/v1/admin/retention/purge?older_than_days=30")
+    assert purged.status_code == 200
+    assert purged.json()["deleted_runs"] == 1
+    assert api.get(f"/v1/research/runs/{run_id}").status_code == 404
 
 
 def test_frontend_origin_is_allowed_by_cors(tmp_path) -> None:

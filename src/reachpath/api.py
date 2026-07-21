@@ -287,6 +287,23 @@ def create_app(settings: Any | None = None) -> FastAPI:
         app.state.store.record_audit(workspace_id, "api_key.revoked", "api_key", key_id)
         return {"revoked": True}
 
+    @app.post("/v1/admin/retention/purge")
+    async def purge_retention(
+        older_than_days: int | None = None,
+        workspace_id: str = Depends(admin_context),
+    ) -> dict[str, int | str]:
+        days = settings.retention_days if older_than_days is None else older_than_days
+        if days < 1 or days > 3_650:
+            raise HTTPException(status_code=400, detail="older_than_days must be between 1 and 3650")
+        deleted = app.state.store.purge_research_runs(workspace_id, days)
+        app.state.store.record_audit(
+            workspace_id,
+            "retention.purged",
+            "research_runs",
+            metadata={"older_than_days": days, "deleted": deleted},
+        )
+        return {"workspace_id": workspace_id, "older_than_days": days, "deleted_runs": deleted}
+
     @app.get("/v1/usage/quota")
     async def usage_quota(workspace_id: str = Depends(workspace_context)) -> dict[str, float | str]:
         from datetime import datetime, timezone

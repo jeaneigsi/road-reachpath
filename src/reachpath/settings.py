@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     service_circuit_failure_threshold: int = 3
     service_circuit_cooldown_seconds: float = 30.0
     monthly_budget_usd: float = 100.0
+    retention_days: int = 0
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     oauth_encryption_key: str | None = None
     oauth_state_ttl_seconds: int = 600

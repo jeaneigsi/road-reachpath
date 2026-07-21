@@ -49,7 +49,7 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 - [x] Quotas par organisation, estimation des coûts et arrêt sur budget.
 - [x] Timeouts, retries bornés et circuit breakers sur les appels interservices ; rate limiting distribué reste à livrer.
 - [x] Logs structurés, métriques, traces et corrélation interservices.
-- [ ] Rétention configurable et suppression des artefacts temporaires.
+- [x] Rétention configurable des runs terminés via endpoint admin ; suppression des artefacts temporaires externes reste à livrer.
 
 ## P1 — intégrations et API commerciale
 

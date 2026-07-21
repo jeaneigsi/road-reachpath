@@ -716,6 +716,29 @@ class RunStore:
             ).all()
             return round(sum(float((record.usage_json or {}).get("cost_usd", 0)) for record in records), 6)
 
+    def purge_research_runs(self, workspace_id: str, older_than_days: int) -> int:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+        removable = {
+            RunStatus.COMPLETED.value,
+            RunStatus.NEEDS_CLARIFICATION.value,
+            RunStatus.FAILED.value,
+            RunStatus.CANCELLED.value,
+        }
+        deleted = 0
+        with Session(self.engine) as session:
+            records = session.scalars(
+                select(ResearchRunRecord).where(
+                    ResearchRunRecord.workspace_id == workspace_id,
+                    ResearchRunRecord.updated_at < cutoff,
+                    ResearchRunRecord.status.in_(removable),
+                )
+            ).all()
+            for record in records:
+                session.delete(record)
+                deleted += 1
+            session.commit()
+        return deleted
+
     @staticmethod
     def _to_domain(record: ResearchRunRecord) -> ResearchRun:
         return ResearchRun(

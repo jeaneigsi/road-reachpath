@@ -117,6 +117,11 @@ Ces opérations sont limitées au workspace authentifié et inscrites dans le
 journal d'audit. L'opt-out ARGUS devra être synchronisé séparément lors de la
 prochaine intégration de gouvernance.
 
+La rétention automatique est désactivée par défaut (`REACHPATH_RETENTION_DAYS=0`).
+Un administrateur peut purger les runs terminés plus anciens qu'un seuil
+explicite avec `POST /v1/admin/retention/purge?older_than_days=30` ; la purge
+est limitée au workspace et inscrite dans l'audit.
+
 La stratégie contient trois scénarios éditables (introduction, pertinence
 directe, insight d'abord), les formulations proposées et les limites qui
 imposent une validation humaine.
