@@ -15,6 +15,15 @@ class RunStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class UsageMetrics(BaseModel):
+    search_calls: int = Field(default=0, ge=0)
+    model_calls: int = Field(default=0, ge=0)
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    cost_usd: float = Field(default=0, ge=0)
+    duration_ms: float = Field(default=0, ge=0)
+
+
 class ResearchRequest(BaseModel):
     person: str = Field(min_length=2, max_length=240)
     company: str | None = Field(default=None, max_length=240)
@@ -55,6 +64,7 @@ class ResearchRun(BaseModel):
     request: ResearchRequest
     result: dict[str, Any] | None = None
     error: str | None = None
+    usage: UsageMetrics = Field(default_factory=UsageMetrics)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -65,3 +75,4 @@ class ResearchRunResponse(BaseModel):
     status: RunStatus
     result: dict[str, Any] | None = None
     error: str | None = None
+    usage: UsageMetrics = Field(default_factory=UsageMetrics)

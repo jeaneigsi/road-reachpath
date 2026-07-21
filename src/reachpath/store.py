@@ -10,7 +10,14 @@ from sqlalchemy import JSON, DateTime, String, UniqueConstraint, create_engine, 
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 from sqlalchemy.pool import StaticPool
 
-from .domain import CrmContact, CrmContactResponse, ResearchRequest, ResearchRun, RunStatus
+from .domain import (
+    CrmContact,
+    CrmContactResponse,
+    ResearchRequest,
+    ResearchRun,
+    RunStatus,
+    UsageMetrics,
+)
 
 
 class Base(DeclarativeBase):
@@ -29,6 +36,7 @@ class ResearchRunRecord(Base):
     request_json: Mapped[dict[str, Any]] = mapped_column(JSON)
     result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     error: Mapped[str | None] = mapped_column(String(4_000), nullable=True)
+    usage_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -94,6 +102,7 @@ class RunStore:
                 request_hash=self._request_hash(run.request),
                 status=run.status.value,
                 request_json=run.request.model_dump(mode="json"),
+                usage_json=run.usage.model_dump(mode="json"),
                 created_at=run.created_at,
                 updated_at=run.updated_at,
             )
@@ -214,6 +223,7 @@ class RunStore:
         status: RunStatus | None = None,
         result: dict[str, Any] | None = None,
         error: str | None = None,
+        usage: UsageMetrics | None = None,
     ) -> ResearchRun | None:
         with Session(self.engine) as session:
             record = session.scalar(
@@ -230,9 +240,18 @@ class RunStore:
                 record.result_json = result
             if error is not None:
                 record.error = error
+            if usage is not None:
+                record.usage_json = usage.model_dump(mode="json")
             record.updated_at = datetime.now(timezone.utc)
             session.commit()
             return self._to_domain(record)
+
+    def monthly_cost(self, workspace_id: str) -> float:
+        with Session(self.engine) as session:
+            records = session.scalars(
+                select(ResearchRunRecord).where(ResearchRunRecord.workspace_id == workspace_id)
+            ).all()
+            return round(sum(float((record.usage_json or {}).get("cost_usd", 0)) for record in records), 6)
 
     @staticmethod
     def _to_domain(record: ResearchRunRecord) -> ResearchRun:
@@ -242,6 +261,7 @@ class RunStore:
             request=ResearchRequest.model_validate(record.request_json),
             result=record.result_json,
             error=record.error,
+            usage=UsageMetrics.model_validate(record.usage_json or {}),
             created_at=record.created_at,
             updated_at=record.updated_at,
         )

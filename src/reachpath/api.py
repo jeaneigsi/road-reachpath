@@ -7,7 +7,14 @@ import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile, status
 
 from .crm import build_argus_bundle, parse_csv
-from .domain import CrmImportResponse, ResearchRequest, ResearchRun, ResearchRunResponse, RunStatus
+from .domain import (
+    CrmImportResponse,
+    ResearchRequest,
+    ResearchRun,
+    ResearchRunResponse,
+    RunStatus,
+    UsageMetrics,
+)
 from .orchestrator import ProspectingOrchestrator
 from .settings import get_settings
 from .store import IdempotencyConflictError, RunStore
@@ -37,6 +44,7 @@ def _response(run: ResearchRun, workspace_id: str) -> ResearchRunResponse:
         status=run.status,
         result=run.result,
         error=run.error,
+        usage=run.usage,
     )
 
 
@@ -51,7 +59,14 @@ async def _execute(app: FastAPI, run_id: UUID, workspace_id: str) -> None:
             workspace_id=workspace_id,
             run_id=str(run_id),
         )
-        store.update(workspace_id, run_id, status=RunStatus.COMPLETED, result=result)
+        usage = UsageMetrics.model_validate(result.get("evidence", {}).get("usage", {}) or {})
+        store.update(
+            workspace_id,
+            run_id,
+            status=RunStatus.COMPLETED,
+            result=result,
+            usage=usage,
+        )
     except Exception as exc:  # boundary converts failures to observable run state
         store.update(workspace_id, run_id, status=RunStatus.FAILED, error=str(exc))
 
@@ -62,6 +77,17 @@ def create_app(settings: Any | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.store = RunStore(settings.database_url)
     app.state.orchestrator = ProspectingOrchestrator(settings)
+
+    @app.middleware("http")
+    async def request_context(request, call_next):
+        import uuid
+
+        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        correlation_id = request.headers.get("X-Correlation-ID") or request_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Correlation-ID"] = correlation_id
+        return response
 
     async def workspace_context(
         workspace_header: str = Header(default="", alias="X-Workspace-ID"),
@@ -106,6 +132,18 @@ def create_app(settings: Any | None = None) -> FastAPI:
                 "workspace_scoping",
                 "langgraph_orchestration",
             ],
+        }
+
+    @app.get("/v1/usage/quota")
+    async def usage_quota(workspace_id: str = Depends(workspace_context)) -> dict[str, float | str]:
+        consumed = app.state.store.monthly_cost(workspace_id)
+        budget = float(settings.monthly_budget_usd)
+        return {
+            "workspace_id": workspace_id,
+            "period": "all-records-until-monthly-rollup-is-enabled",
+            "consumed_usd": consumed,
+            "budget_usd": budget,
+            "remaining_usd": max(0.0, round(budget - consumed, 6)),
         }
 
     @app.post("/v1/connectors/crm/import", response_model=CrmImportResponse)

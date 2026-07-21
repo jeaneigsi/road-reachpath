@@ -13,9 +13,11 @@ def client(tmp_path):
 
 
 def test_health(tmp_path) -> None:
-    response = client(tmp_path).get("/health")
+    response = client(tmp_path).get("/health", headers={"X-Request-ID": "req-test"})
     assert response.status_code == 200
     assert response.json()["service"] == "reachpath"
+    assert response.headers["X-Request-ID"] == "req-test"
+    assert response.headers["X-Correlation-ID"] == "req-test"
 
 
 def test_create_research_is_durable_and_scoped(tmp_path) -> None:
@@ -60,6 +62,9 @@ def test_create_research_is_durable_and_scoped(tmp_path) -> None:
     durable = restarted.get(f"/v1/research/runs/{run_id}", headers=headers)
     assert durable.status_code == 200
     assert durable.json()["status"] == "completed"
+    quota = restarted.get("/v1/usage/quota", headers=headers)
+    assert quota.status_code == 200
+    assert quota.json()["workspace_id"] == "acme"
 
 
 def test_worker_drains_queued_run(tmp_path) -> None:

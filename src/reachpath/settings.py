@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     searchswarm_api_key: str | None = None
     reportforge_api_key: str | None = None
     service_poll_interval_seconds: float = 1.0
+    monthly_budget_usd: float = 100.0
 
 
 @lru_cache
