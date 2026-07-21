@@ -8,7 +8,7 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, status
 from .domain import ResearchRequest, ResearchRun, ResearchRunResponse, RunStatus
 from .orchestrator import ProspectingOrchestrator
 from .settings import get_settings
-from .store import RunStore
+from .store import IdempotencyConflictError, RunStore
 
 
 def _workspace(value: str) -> str:
@@ -30,10 +30,9 @@ def _response(run: ResearchRun, workspace_id: str) -> ResearchRunResponse:
 
 async def _execute(app: FastAPI, run_id: UUID, workspace_id: str) -> None:
     store: RunStore = app.state.store
-    run = store.get(workspace_id, run_id)
-    if run is None or run.status == RunStatus.CANCELLED:
+    run = store.claim(workspace_id, run_id)
+    if run is None:
         return
-    store.update(workspace_id, run_id, status=RunStatus.RUNNING)
     try:
         result = await app.state.orchestrator.execute(
             run.request,
@@ -48,12 +47,35 @@ async def _execute(app: FastAPI, run_id: UUID, workspace_id: str) -> None:
 def create_app(settings: Any | None = None) -> FastAPI:
     settings = settings or get_settings()
     app = FastAPI(title="ReachPath API", version="0.1.0")
+    app.state.settings = settings
     app.state.store = RunStore(settings.database_url)
     app.state.orchestrator = ProspectingOrchestrator(settings)
 
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "service": "reachpath"}
+
+    @app.get("/ready")
+    async def ready() -> dict[str, str]:
+        try:
+            app.state.store.ready()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="database unavailable") from exc
+        return {"status": "ready"}
+
+    @app.get("/v1/service")
+    async def service() -> dict[str, object]:
+        return {
+            "name": "reachpath",
+            "version": "0.1.0",
+            "api_version": "v1",
+            "capabilities": [
+                "relationship_prospecting",
+                "durable_research_runs",
+                "workspace_scoping",
+                "langgraph_orchestration",
+            ],
+        }
 
     @app.post(
         "/v1/research/runs",
@@ -73,10 +95,13 @@ def create_app(settings: Any | None = None) -> FastAPI:
                 raise HTTPException(status_code=400, detail="Idempotency-Key cannot be empty")
             if len(idempotency_key) > 255:
                 raise HTTPException(status_code=400, detail="Idempotency-Key is too long")
-        run, created = app.state.store.create(
-            ResearchRun(request=request), workspace_id, idempotency_key
-        )
-        if created:
+        try:
+            run, created = app.state.store.create(
+                ResearchRun(request=request), workspace_id, idempotency_key
+            )
+        except IdempotencyConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if created and app.state.settings.auto_execute:
             background_tasks.add_task(_execute, app, run.id, workspace_id)
         return _response(run, workspace_id)
 

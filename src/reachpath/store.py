@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from hashlib import sha256
+import json
 from typing import Any
 from uuid import UUID
 
@@ -22,6 +24,7 @@ class ResearchRunRecord(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     workspace_id: Mapped[str] = mapped_column(String(128), index=True)
     idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    request_hash: Mapped[str] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(40), index=True)
     request_json: Mapped[dict[str, Any]] = mapped_column(JSON)
     result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
@@ -60,11 +63,16 @@ class RunStore:
                     )
                 )
                 if existing is not None:
+                    if existing.request_hash != self._request_hash(run.request):
+                        raise IdempotencyConflictError(
+                            "Idempotency-Key was already used with a different request"
+                        )
                     return self._to_domain(existing), False
             record = ResearchRunRecord(
                 id=str(run.id),
                 workspace_id=workspace_id,
                 idempotency_key=idempotency_key,
+                request_hash=self._request_hash(run.request),
                 status=run.status.value,
                 request_json=run.request.model_dump(mode="json"),
                 created_at=run.created_at,
@@ -73,6 +81,13 @@ class RunStore:
             session.add(record)
             session.commit()
             return self._to_domain(record), True
+
+    @staticmethod
+    def _request_hash(request: ResearchRequest) -> str:
+        payload = json.dumps(
+            request.model_dump(mode="json"), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+        return sha256(payload.encode("utf-8")).hexdigest()
 
     def get(self, workspace_id: str, run_id: UUID) -> ResearchRun | None:
         with Session(self.engine) as session:
@@ -83,6 +98,37 @@ class RunStore:
                 )
             )
             return self._to_domain(record) if record else None
+
+    def claim(self, workspace_id: str, run_id: UUID) -> ResearchRun | None:
+        """Atomically claim a queued run for one API task or worker."""
+        with Session(self.engine) as session:
+            record = session.scalar(
+                select(ResearchRunRecord).where(
+                    ResearchRunRecord.workspace_id == workspace_id,
+                    ResearchRunRecord.id == str(run_id),
+                    ResearchRunRecord.status == RunStatus.QUEUED.value,
+                )
+            )
+            if record is None:
+                return None
+            record.status = RunStatus.RUNNING.value
+            record.updated_at = datetime.now(timezone.utc)
+            session.commit()
+            return self._to_domain(record)
+
+    def queued(self, limit: int = 20) -> list[tuple[str, UUID]]:
+        with Session(self.engine) as session:
+            records = session.scalars(
+                select(ResearchRunRecord)
+                .where(ResearchRunRecord.status == RunStatus.QUEUED.value)
+                .order_by(ResearchRunRecord.created_at)
+                .limit(limit)
+            ).all()
+            return [(record.workspace_id, UUID(record.id)) for record in records]
+
+    def ready(self) -> None:
+        with self.engine.connect() as connection:
+            connection.exec_driver_sql("SELECT 1")
 
     def update(
         self,
@@ -123,3 +169,7 @@ class RunStore:
             created_at=record.created_at,
             updated_at=record.updated_at,
         )
+
+
+class IdempotencyConflictError(ValueError):
+    """An idempotency key cannot be reused for a different request."""

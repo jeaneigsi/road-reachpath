@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${REACHPATH_POSTGRES_DB:-reachpath}
+      POSTGRES_USER: ${REACHPATH_POSTGRES_USER:-reachpath}
+      POSTGRES_PASSWORD: ${REACHPATH_POSTGRES_PASSWORD:?set REACHPATH_POSTGRES_PASSWORD in .env}
+    volumes:
+      - reachpath-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      REACHPATH_ENVIRONMENT: production
+      REACHPATH_DRY_RUN: ${REACHPATH_DRY_RUN:-false}
+      REACHPATH_AUTO_EXECUTE: "false"
+      REACHPATH_DATABASE_URL: postgresql+psycopg://${REACHPATH_POSTGRES_USER:-reachpath}:${REACHPATH_POSTGRES_PASSWORD}@postgres:5432/${REACHPATH_POSTGRES_DB:-reachpath}
+      REACHPATH_ARGUS_URL: ${REACHPATH_ARGUS_URL:-http://host.docker.internal:8000}
+      REACHPATH_SEARCHSWARM_URL: ${REACHPATH_SEARCHSWARM_URL:-http://host.docker.internal:8012}
+      REACHPATH_REPORTFORGE_URL: ${REACHPATH_REPORTFORGE_URL:-http://host.docker.internal:8011}
+      REACHPATH_ARGUS_API_KEY: ${REACHPATH_ARGUS_API_KEY:?set REACHPATH_ARGUS_API_KEY in .env}
+      REACHPATH_SEARCHSWARM_API_KEY: ${REACHPATH_SEARCHSWARM_API_KEY:?set REACHPATH_SEARCHSWARM_API_KEY in .env}
+      REACHPATH_REPORTFORGE_API_KEY: ${REACHPATH_REPORTFORGE_API_KEY:?set REACHPATH_REPORTFORGE_API_KEY in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8020:8020"
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["reachpath", "worker", "--poll-interval", "1"]
+    environment:
+      REACHPATH_ENVIRONMENT: production
+      REACHPATH_DRY_RUN: ${REACHPATH_DRY_RUN:-false}
+      REACHPATH_AUTO_EXECUTE: "false"
+      REACHPATH_DATABASE_URL: postgresql+psycopg://${REACHPATH_POSTGRES_USER:-reachpath}:${REACHPATH_POSTGRES_PASSWORD}@postgres:5432/${REACHPATH_POSTGRES_DB:-reachpath}
+      REACHPATH_ARGUS_URL: ${REACHPATH_ARGUS_URL:-http://host.docker.internal:8000}
+      REACHPATH_SEARCHSWARM_URL: ${REACHPATH_SEARCHSWARM_URL:-http://host.docker.internal:8012}
+      REACHPATH_REPORTFORGE_URL: ${REACHPATH_REPORTFORGE_URL:-http://host.docker.internal:8011}
+      REACHPATH_ARGUS_API_KEY: ${REACHPATH_ARGUS_API_KEY:?set REACHPATH_ARGUS_API_KEY in .env}
+      REACHPATH_SEARCHSWARM_API_KEY: ${REACHPATH_SEARCHSWARM_API_KEY:?set REACHPATH_SEARCHSWARM_API_KEY in .env}
+      REACHPATH_REPORTFORGE_API_KEY: ${REACHPATH_REPORTFORGE_API_KEY:?set REACHPATH_REPORTFORGE_API_KEY in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  reachpath-postgres:

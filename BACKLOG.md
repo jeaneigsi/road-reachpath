@@ -15,17 +15,17 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 
 ## P0 — socle produit et backend
 
-- [ ] Écrire le contrat de recherche : cible, contexte, objectif, contraintes et limites.
-- [ ] Définir les états d'une recherche : `queued`, `running`, `needs_clarification`, `completed`, `failed`, `cancelled`.
-- [ ] Créer le backend FastAPI et sa configuration par environnement.
+- [x] Écrire le contrat de recherche : cible, contexte, objectif, contraintes et limites.
+- [x] Définir les états d'une recherche : `queued`, `running`, `needs_clarification`, `completed`, `failed`, `cancelled`.
+- [x] Créer le backend FastAPI et sa configuration par environnement.
 - [ ] Ajouter PostgreSQL, migrations et séparation par organisation.
-- [ ] Créer les modèles `Workspace`, `User`, `Prospect`, `ResearchRun`, `TargetIdentity`, `Evidence`, `RelationshipPath`, `ContactPoint`, `ApproachStrategy`, `ReportArtifact`.
-- [ ] Ajouter les endpoints de création, suivi, annulation et reprise d'une recherche.
-- [ ] Ajouter corrélation de requêtes, idempotency keys et erreurs JSON stables.
-- [ ] Créer les clients HTTP typés de SearchSwarm, ARGUS et ReportForge.
-- [ ] Créer l'orchestrateur LangGraph avec persistance d'état.
-- [ ] Implémenter le parcours CLI réel de bout en bout.
-- [ ] Ajouter tests unitaires, contrats HTTP et un scénario E2E local avec services simulés.
+- [x] Créer les modèles R0 de `ResearchRun`, `Evidence`, `RelationshipPath` et `ReportArtifact` ; les entités commerciales restantes suivent avec l'authentification.
+- [x] Ajouter les endpoints de création, suivi, annulation et readiness d'une recherche.
+- [x] Ajouter idempotency keys, scoping workspace et erreurs HTTP bornées.
+- [x] Créer les clients HTTP typés de SearchSwarm, ARGUS et ReportForge.
+- [x] Créer l'orchestrateur LangGraph avec état persistant du run.
+- [x] Implémenter le parcours CLI réel de bout en bout.
+- [x] Ajouter tests unitaires, contrats HTTP et un scénario E2E local avec services simulés.
 
 ## P1 — intelligence de prospection
 

@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     app_name: str = "ReachPath"
     environment: str = "local"
     dry_run: bool = True
+    auto_execute: bool = True
     database_url: str = "sqlite:///./reachpath.db"
     argus_url: str = "http://127.0.0.1:8000"
     searchswarm_url: str = "http://127.0.0.1:8012"
