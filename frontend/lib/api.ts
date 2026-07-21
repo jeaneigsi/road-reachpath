@@ -9,6 +9,7 @@ export type RunStatus =
 export type ResearchRun = {
   run_id: string;
   workspace_id: string;
+  request: { person: string; source_person?: string | null; company?: string | null; objective: string; location?: string | null };
   status: RunStatus;
   result?: {
     dossier?: {
@@ -106,6 +107,16 @@ export async function getResearch(runId: string, workspaceId: string): Promise<R
   });
   if (!response.ok) throw new Error(await response.text());
   return response.json();
+}
+
+export async function listResearch(workspaceId: string): Promise<ResearchRun[]> {
+  const response = await fetch(`/api/research/runs?limit=50`, {
+    headers: headers(workspaceId),
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(await response.text());
+  const body = await response.json();
+  return body.items ?? [];
 }
 
 export async function clarifyResearch(

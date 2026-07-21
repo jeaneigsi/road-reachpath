@@ -109,6 +109,7 @@ class ResearchRun(BaseModel):
 class ResearchRunResponse(BaseModel):
     run_id: UUID
     workspace_id: str
+    request: ResearchRequest
     status: RunStatus
     result: dict[str, Any] | None = None
     error: str | None = None

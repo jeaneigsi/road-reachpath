@@ -55,6 +55,7 @@ def _response(run: ResearchRun, workspace_id: str) -> ResearchRunResponse:
     return ResearchRunResponse(
         run_id=run.id,
         workspace_id=workspace_id,
+        request=run.request,
         status=run.status,
         result=run.result,
         error=run.error,
