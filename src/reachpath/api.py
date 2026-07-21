@@ -222,6 +222,35 @@ def create_app(settings: Any | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Research run not found")
         return _response(run, workspace_id)
 
+    async def run_artifact(run_id: UUID, workspace_id: str, key: str) -> dict[str, Any]:
+        run = app.state.store.get(workspace_id, run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="Research run not found")
+        if run.result is None or run.result.get(key) is None:
+            raise HTTPException(status_code=409, detail="Research artifact is not ready")
+        return run.result[key]
+
+    @app.get("/v1/research/runs/{run_id}/dossier")
+    async def get_dossier(
+        run_id: UUID,
+        workspace_id: str = Depends(workspace_context),
+    ) -> dict[str, Any]:
+        return await run_artifact(run_id, workspace_id, "dossier")
+
+    @app.get("/v1/research/runs/{run_id}/strategy")
+    async def get_strategy(
+        run_id: UUID,
+        workspace_id: str = Depends(workspace_context),
+    ) -> dict[str, Any]:
+        return await run_artifact(run_id, workspace_id, "strategies")
+
+    @app.get("/v1/research/runs/{run_id}/report")
+    async def get_report(
+        run_id: UUID,
+        workspace_id: str = Depends(workspace_context),
+    ) -> dict[str, Any]:
+        return await run_artifact(run_id, workspace_id, "report")
+
     @app.post("/v1/research/runs/{run_id}/cancel", response_model=ResearchRunResponse)
     async def cancel_research(
         run_id: UUID,

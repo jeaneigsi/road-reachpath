@@ -9,6 +9,7 @@ from langgraph.graph import END, StateGraph
 from .clients import ServiceClient
 from .domain import ResearchRequest
 from .settings import Settings
+from .strategy import generate_strategies
 
 
 class ResearchState(TypedDict, total=False):
@@ -17,6 +18,7 @@ class ResearchState(TypedDict, total=False):
     run_id: str
     evidence: dict[str, Any]
     dossier: dict[str, Any]
+    strategies: dict[str, Any]
     report: dict[str, Any]
 
 
@@ -53,10 +55,12 @@ class ProspectingOrchestrator:
         graph = StateGraph(ResearchState)
         graph.add_node("collect", self._collect)
         graph.add_node("analyze", self._analyze)
+        graph.add_node("strategize", self._strategize)
         graph.add_node("compose", self._compose)
         graph.set_entry_point("collect")
         graph.add_edge("collect", "analyze")
-        graph.add_edge("analyze", "compose")
+        graph.add_edge("analyze", "strategize")
+        graph.add_edge("strategize", "compose")
         graph.add_edge("compose", END)
         return graph.compile()
 
@@ -132,6 +136,9 @@ class ProspectingOrchestrator:
         )
         return {"dossier": result.get("intelligence_dossier", result), "argus_result": result}
 
+    async def _strategize(self, state: ResearchState) -> dict[str, Any]:
+        return {"strategies": generate_strategies(state["request"], state["dossier"])}
+
     async def _compose(self, state: ResearchState) -> dict[str, Any]:
         if self._is_dry_run(state["request"]):
             request = state["request"]
@@ -139,19 +146,25 @@ class ProspectingOrchestrator:
                 "report": {
                     "title": f"Dossier de prospection — {request['person']}",
                     "objective": request["objective"],
-                    "scenarios": [],
+                    "scenarios": state["strategies"]["scenarios"],
                     "sources": state["evidence"].get("sources", []),
                 }
             }
         request = state["request"]
-        dossier = state["dossier"]
+        dossier_for_report = {
+            **state["dossier"],
+            "metadata": {
+                **(state["dossier"].get("metadata") or {}),
+                "reachpath_strategies": state["strategies"],
+            },
+        }
         result = await self.reportforge.post(
             "/api/v1/report-jobs",
             {
                 "schema_version": "1.0",
                 "title": f"Dossier de prospection — {request['person']}",
                 "objective": request["objective"],
-                "dossier": dossier,
+                "dossier": dossier_for_report,
                 "audience": "Business development",
                 "locale": request.get("locale", "fr"),
                 "metadata": {"reachpath_run_id": state.get("run_id")},
@@ -191,4 +204,9 @@ class ProspectingOrchestrator:
                 "run_id": run_id,
             }
         )
-        return {"evidence": result.get("evidence"), "dossier": result.get("dossier"), "report": result.get("report")}
+        return {
+            "evidence": result.get("evidence"),
+            "dossier": result.get("dossier"),
+            "strategies": result.get("strategies"),
+            "report": result.get("report"),
+        }

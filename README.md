@@ -55,6 +55,16 @@ Les contacts sont stockés par workspace et projetés dans le graphe ARGUS avec
 un statut `authorized`. La lecture se fait via
 `GET /v1/connectors/crm/contacts`.
 
+Après une recherche terminée, ReachPath expose aussi :
+
+- `GET /v1/research/runs/{run_id}/dossier`
+- `GET /v1/research/runs/{run_id}/strategy`
+- `GET /v1/research/runs/{run_id}/report`
+
+La stratégie contient trois scénarios éditables (introduction, pertinence
+directe, insight d'abord), les formulations proposées et les limites qui
+imposent une validation humaine.
+
 ## Worker et Docker
 
 En local, l'API exécute les tâches en arrière-plan. En production, désactiver

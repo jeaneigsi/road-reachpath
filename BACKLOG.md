@@ -38,7 +38,7 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 - [ ] Détecter contradictions, doublons et données obsolètes.
 - [ ] Générer plusieurs stratégies : introduction chaude, approche directe et approche contenu/événement.
 - [ ] Générer des e-mails et messages personnalisables, sans envoi automatique.
-- [ ] Produire un dossier avec résumé, graphe, preuves, limites et recommandations.
+- [x] Produire un dossier avec preuves, limites et recommandations de prospection versionnées.
 
 ## P1 — sécurité, conformité et exploitation
 

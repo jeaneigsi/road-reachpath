@@ -90,4 +90,5 @@ async def test_real_service_contract_flow_uses_workspace_and_auth_headers() -> N
 
     assert result["evidence"]["bundle_id"] == "bundle-1"
     assert result["dossier"]["dossier_id"] == "argus-1"
+    assert len(result["strategies"]["scenarios"]) == 3
     assert result["report"]["report_run_id"] == "report-1"

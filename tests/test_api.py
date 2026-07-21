@@ -37,6 +37,8 @@ def test_create_research_is_durable_and_scoped(tmp_path) -> None:
     body = result.json()
     assert body["status"] == "completed"
     assert body["result"]["report"]["title"] == "Dossier de prospection — Nadia Karim"
+    assert len(body["result"]["strategies"]["scenarios"]) == 3
+    assert api.get(f"/v1/research/runs/{run_id}/strategy", headers=headers).status_code == 200
 
     replay = api.post(
         "/v1/research/runs",
