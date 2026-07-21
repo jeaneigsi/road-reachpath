@@ -161,6 +161,9 @@ quatorze derniers jours dans `REACHPATH_BACKUP_DIR`.
 Les appels vers SearchSwarm, ARGUS et ReportForge utilisent des retries bornés
 sur les erreurs transitoires (`429`, `5xx`, réseau). Les paramètres sont
 `REACHPATH_SERVICE_MAX_RETRIES` et `REACHPATH_SERVICE_RETRY_BACKOFF_SECONDS`.
+Après plusieurs erreurs transitoires, un circuit breaker ouvre pendant
+`REACHPATH_SERVICE_CIRCUIT_COOLDOWN_SECONDS` ; son seuil est
+`REACHPATH_SERVICE_CIRCUIT_FAILURE_THRESHOLD`.
 
 La corrélation HTTP est propagée par `X-Request-ID` et `X-Correlation-ID`.
 L'endpoint Prometheus `GET /metrics` expose les requêtes, durées, états des

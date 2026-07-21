@@ -47,16 +47,16 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 - [x] Journal d'audit et export des traitements par workspace.
 - [x] Suppression et export des recherches/contacts d'une personne par workspace ; opt-out externe reste à synchroniser avec ARGUS.
 - [x] Quotas par organisation, estimation des coûts et arrêt sur budget.
-- [x] Timeouts et retries bornés sur les appels interservices ; rate limiting et circuit breakers restent à livrer.
+- [x] Timeouts, retries bornés et circuit breakers sur les appels interservices ; rate limiting distribué reste à livrer.
 - [x] Logs structurés, métriques, traces et corrélation interservices.
 - [ ] Rétention configurable et suppression des artefacts temporaires.
 
 ## P1 — intégrations et API commerciale
 
 - [x] Import CSV CRM autorisé documenté, validé et projeté vers ARGUS.
-- [x] Connecteur OAuth HubSpot (connexion, refresh et révocation ; sync à venir).
-- [x] Connecteur OAuth Salesforce (connexion, refresh et révocation ; sync à venir).
-- [x] Connecteur OAuth Pipedrive (connexion, refresh et révocation ; sync à venir).
+- [x] Connecteur OAuth HubSpot (connexion, refresh, révocation et sync read-only).
+- [x] Connecteur OAuth Salesforce (connexion, refresh, révocation et sync read-only).
+- [x] Connecteur OAuth Pipedrive (connexion, refresh, révocation et sync read-only).
 - [x] Synchronisation CRM read-only à la demande et mapping vers les contacts autorisés.
 - [ ] Synchronisation périodique et webhooks entrants.
 - [x] API publique versionnée, clés d'API et scopes RBAC de base.

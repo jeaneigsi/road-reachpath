@@ -33,12 +33,16 @@ class ProspectingOrchestrator:
             auth_mode="bearer",
             max_retries=settings.service_max_retries,
             retry_backoff_seconds=settings.service_retry_backoff_seconds,
+            circuit_failure_threshold=settings.service_circuit_failure_threshold,
+            circuit_cooldown_seconds=settings.service_circuit_cooldown_seconds,
         )
         self.argus = ServiceClient(
             settings.argus_url,
             settings.argus_api_key,
             max_retries=settings.service_max_retries,
             retry_backoff_seconds=settings.service_retry_backoff_seconds,
+            circuit_failure_threshold=settings.service_circuit_failure_threshold,
+            circuit_cooldown_seconds=settings.service_circuit_cooldown_seconds,
         )
         self.reportforge = ServiceClient(
             settings.reportforge_url,
@@ -46,6 +50,8 @@ class ProspectingOrchestrator:
             auth_mode="bearer",
             max_retries=settings.service_max_retries,
             retry_backoff_seconds=settings.service_retry_backoff_seconds,
+            circuit_failure_threshold=settings.service_circuit_failure_threshold,
+            circuit_cooldown_seconds=settings.service_circuit_cooldown_seconds,
         )
 
     def _is_dry_run(self, request: dict[str, Any]) -> bool:

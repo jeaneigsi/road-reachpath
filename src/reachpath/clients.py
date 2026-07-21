@@ -1,7 +1,12 @@
 import asyncio
+from time import monotonic
 from typing import Any, Literal
 
 import httpx
+
+
+class ServiceCircuitOpenError(RuntimeError):
+    """Raised while a downstream service is in its cooldown window."""
 
 
 class ServiceClient:
@@ -16,6 +21,8 @@ class ServiceClient:
         transport: httpx.AsyncBaseTransport | None = None,
         max_retries: int = 2,
         retry_backoff_seconds: float = 0.25,
+        circuit_failure_threshold: int = 3,
+        circuit_cooldown_seconds: float = 30.0,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -23,6 +30,10 @@ class ServiceClient:
         self.transport = transport
         self.max_retries = max(0, max_retries)
         self.retry_backoff_seconds = max(0.0, retry_backoff_seconds)
+        self.circuit_failure_threshold = max(1, circuit_failure_threshold)
+        self.circuit_cooldown_seconds = max(0.0, circuit_cooldown_seconds)
+        self._consecutive_failures = 0
+        self._circuit_opened_at: float | None = None
 
     def headers(
         self,
@@ -80,17 +91,40 @@ class ServiceClient:
         timeout: float,
         **kwargs: Any,
     ) -> dict[str, Any]:
+        self._check_circuit()
         for attempt in range(self.max_retries + 1):
             try:
                 response = await client.request(method, path, timeout=timeout, **kwargs)
             except httpx.TransportError:
                 if attempt >= self.max_retries:
+                    self._record_failure()
                     raise
                 await asyncio.sleep(self.retry_backoff_seconds * (2**attempt))
                 continue
             if response.status_code in {429, 500, 502, 503, 504} and attempt < self.max_retries:
                 await asyncio.sleep(self.retry_backoff_seconds * (2**attempt))
                 continue
+            if response.status_code in {429, 500, 502, 503, 504}:
+                self._record_failure()
+            else:
+                self._record_success()
             response.raise_for_status()
             return response.json()
         raise RuntimeError("Service request retry loop ended unexpectedly")
+
+    def _check_circuit(self) -> None:
+        if self._circuit_opened_at is None:
+            return
+        if monotonic() - self._circuit_opened_at < self.circuit_cooldown_seconds:
+            raise ServiceCircuitOpenError(f"Downstream service circuit open for {self.base_url}")
+        self._circuit_opened_at = None
+        self._consecutive_failures = 0
+
+    def _record_failure(self) -> None:
+        self._consecutive_failures += 1
+        if self._consecutive_failures >= self.circuit_failure_threshold:
+            self._circuit_opened_at = monotonic()
+
+    def _record_success(self) -> None:
+        self._consecutive_failures = 0
+        self._circuit_opened_at = None
