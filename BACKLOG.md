@@ -29,12 +29,12 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 
 ## P1 — intelligence de prospection
 
-- [ ] Résoudre les homonymes et demander une clarification si nécessaire.
+- [x] Résoudre les homonymes et demander une clarification si nécessaire.
 - [ ] Rechercher personne, entreprise, dirigeants, collègues et signaux professionnels.
-- [ ] Fusionner les données CRM autorisées avec le graphe ARGUS.
-- [ ] Calculer les chemins relationnels de niveaux 1, 2 et 3.
-- [ ] Classer les intermédiaires selon proximité, confiance, pertinence et fraîcheur.
-- [ ] Identifier les points de contact professionnels disponibles et leur provenance.
+- [x] Fusionner les données CRM autorisées avec le graphe ARGUS.
+- [x] Calculer les chemins relationnels de niveaux 1, 2 et 3 via ARGUS lorsque `source_person` est fourni.
+- [x] Classer les intermédiaires selon proximité, confiance, pertinence et fraîcheur via le score ARGUS.
+- [x] Identifier les points de contact professionnels disponibles et leur provenance.
 - [ ] Détecter contradictions, doublons et données obsolètes.
 - [ ] Générer plusieurs stratégies : introduction chaude, approche directe et approche contenu/événement.
 - [ ] Générer des e-mails et messages personnalisables, sans envoi automatique.
@@ -66,7 +66,7 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 
 - [ ] Authentification et onboarding organisation.
 - [x] Formulaire de nouvelle recherche initiale.
-- [ ] Clarification guidée avec reprise d'une recherche `needs_clarification`.
+- [x] Clarification guidée avec reprise d'une recherche `needs_clarification` via l'API.
 - [x] Vue temps réel de progression de la recherche.
 - [ ] Vue dossier personne/entreprise avec preuves et niveaux de confiance.
 - [ ] Carte des relations et filtres par profondeur.

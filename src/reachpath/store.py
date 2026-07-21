@@ -353,6 +353,30 @@ class RunStore:
             session.commit()
             return self._to_domain(record)
 
+    def requeue_with_request(
+        self, workspace_id: str, run_id: UUID, request: ResearchRequest
+    ) -> ResearchRun | None:
+        """Replace an ambiguous request and make the same run executable again."""
+        with Session(self.engine) as session:
+            record = session.scalar(
+                select(ResearchRunRecord).where(
+                    ResearchRunRecord.workspace_id == workspace_id,
+                    ResearchRunRecord.id == str(run_id),
+                    ResearchRunRecord.status == RunStatus.NEEDS_CLARIFICATION.value,
+                )
+            )
+            if record is None:
+                return None
+            record.request_json = request.model_dump(mode="json")
+            record.request_hash = self._request_hash(request)
+            record.status = RunStatus.QUEUED.value
+            record.result_json = None
+            record.error = None
+            record.usage_json = UsageMetrics().model_dump(mode="json")
+            record.updated_at = datetime.now(timezone.utc)
+            session.commit()
+            return self._to_domain(record)
+
     def monthly_cost(self, workspace_id: str) -> float:
         now = datetime.now(timezone.utc)
         start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)

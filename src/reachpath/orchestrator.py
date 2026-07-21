@@ -4,6 +4,7 @@ import asyncio
 import time
 from typing import Any, TypedDict
 
+import httpx
 from langgraph.graph import END, StateGraph
 
 from .clients import ServiceClient
@@ -134,7 +135,50 @@ class ProspectingOrchestrator:
             idempotency_key=f"reachpath-argus-{state.get('run_id', request['person'])}",
             timeout=request["max_duration_seconds"],
         )
-        return {"dossier": result.get("intelligence_dossier", result), "argus_result": result}
+        dossier = result.get("intelligence_dossier", result)
+        enrichment_warnings: list[str] = []
+        source_person = request.get("source_person")
+        if source_person:
+            try:
+                paths = await self.argus.post(
+                    "/v1/connections/paths",
+                    {
+                        "source_person": source_person,
+                        "target_person": request["person"],
+                        "max_depth": 3,
+                    },
+                    workspace_id=state.get("workspace_id"),
+                    idempotency_key=f"reachpath-paths-{state.get('run_id', request['person'])}",
+                    timeout=30,
+                )
+                contact_strategy = await self.argus.post(
+                    "/v1/connections/contact-strategy",
+                    {
+                        "source_person": source_person,
+                        "target_person": request["person"],
+                    },
+                    workspace_id=state.get("workspace_id"),
+                    idempotency_key=f"reachpath-contact-{state.get('run_id', request['person'])}",
+                    timeout=30,
+                )
+                dossier = {
+                    **dossier,
+                    "connection_source": source_person,
+                    "relationship_paths": paths.get("paths", []),
+                    "relationships": paths.get("paths", []),
+                    "contact_strategy": contact_strategy,
+                    "contact_points": dossier.get("contact_points")
+                    or contact_strategy.get("professional_contacts", []),
+                }
+            except httpx.HTTPStatusError as exc:
+                enrichment_warnings.append(
+                    f"ARGUS connection enrichment unavailable ({exc.response.status_code})."
+                )
+            except httpx.HTTPError:
+                enrichment_warnings.append("ARGUS connection enrichment unavailable.")
+        if enrichment_warnings:
+            dossier = {**dossier, "warnings": enrichment_warnings}
+        return {"dossier": dossier, "argus_result": result}
 
     async def _strategize(self, state: ResearchState) -> dict[str, Any]:
         return {"strategies": generate_strategies(state["request"], state["dossier"])}

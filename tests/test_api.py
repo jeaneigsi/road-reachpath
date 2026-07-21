@@ -109,6 +109,36 @@ def test_worker_drains_queued_run(tmp_path) -> None:
     assert api.get(f"/v1/research/runs/{run_id}").json()["status"] == "completed"
 
 
+def test_ambiguous_run_can_be_clarified_and_restarted(tmp_path) -> None:
+    class FakeOrchestrator:
+        calls = 0
+
+        async def execute(self, _request, *, workspace_id, run_id):
+            self.calls += 1
+            return {
+                "evidence": {"usage": {}},
+                "dossier": {"status": "ambiguous"} if self.calls == 1 else {"status": "resolved"},
+                "strategies": {"scenarios": []},
+                "report": {},
+            }
+
+    settings = Settings(database_url=f"sqlite:///{tmp_path / 'clarify.db'}", dry_run=True)
+    application = create_app(settings)
+    application.state.orchestrator = FakeOrchestrator()
+    api = TestClient(application)
+    payload = {"person": "Nadia Karim", "objective": "Obtenir un rendez-vous", "dry_run": True}
+    created = api.post("/v1/research/runs", json=payload)
+    run_id = created.json()["run_id"]
+    assert api.get(f"/v1/research/runs/{run_id}").json()["status"] == "needs_clarification"
+
+    clarified = api.post(
+        f"/v1/research/runs/{run_id}/clarify",
+        json={**payload, "location": "Casablanca", "source_person": "Alex Martin"},
+    )
+    assert clarified.status_code == 202
+    assert api.get(f"/v1/research/runs/{run_id}").json()["status"] == "completed"
+
+
 def test_production_auth_scopes_workspace(tmp_path) -> None:
     settings = Settings(
         database_url=f"sqlite:///{tmp_path / 'auth.db'}",

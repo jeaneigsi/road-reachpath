@@ -26,6 +26,7 @@ Dans un autre terminal :
 . .venv/bin/activate
 reachpath research \
   --person "Nadia Karim" \
+  --source-person "Alex Martin" \
   --objective "Obtenir un rendez-vous commercial" \
   --workspace-id local
 ```
@@ -72,6 +73,18 @@ Après une recherche terminée, ReachPath expose aussi :
 La stratégie contient trois scénarios éditables (introduction, pertinence
 directe, insight d'abord), les formulations proposées et les limites qui
 imposent une validation humaine.
+
+Pour rechercher les chemins relationnels, fournir `--source-person` (ou
+`source_person` dans l'API). ReachPath appelle alors ARGUS pour les chemins de
+profondeur 1 à 3 et la stratégie de contact. Si ARGUS signale une identité
+ambiguë, le run passe à `needs_clarification` et peut être relancé avec :
+
+```http
+POST /v1/research/runs/{run_id}/clarify
+```
+
+Le corps reprend une requête de recherche complète après ajout du contexte
+manquant. Aucune prise de contact n'est envoyée automatiquement.
 
 ## Worker et Docker
 

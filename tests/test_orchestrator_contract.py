@@ -48,7 +48,21 @@ async def test_real_service_contract_flow_uses_workspace_and_auth_headers() -> N
             return httpx.Response(200, json={"run_id": "search-1", "status": "completed"})
         if request.url.host == "argus.test":
             assert request.headers["X-API-Key"] == "argus-key"
-            assert "bundle" in json.loads(request.content)
+            payload = json.loads(request.content)
+            if request.url.path.endswith("/connections/paths"):
+                assert payload == {
+                    "source_person": "Alex Martin",
+                    "target_person": "Nadia Karim",
+                    "max_depth": 3,
+                }
+                return httpx.Response(200, json={"paths": [{"degree": 2, "steps": []}]})
+            if request.url.path.endswith("/connections/contact-strategy"):
+                assert payload["source_person"] == "Alex Martin"
+                return httpx.Response(
+                    200,
+                    json={"recommendation": "warm_introduction", "professional_contacts": []},
+                )
+            assert "bundle" in payload
             return httpx.Response(200, json={"intelligence_dossier": dossier})
         if request.url.host == "reportforge.test":
             assert request.headers["Authorization"] == "Bearer report-key"
@@ -85,12 +99,19 @@ async def test_real_service_contract_flow_uses_workspace_and_auth_headers() -> N
     )
 
     result = await orchestrator.execute(
-        ResearchRequest(person="Nadia Karim", objective="Obtenir un rendez-vous", dry_run=False),
+        ResearchRequest(
+            person="Nadia Karim",
+            source_person="Alex Martin",
+            objective="Obtenir un rendez-vous",
+            dry_run=False,
+        ),
         workspace_id="workspace-a",
         run_id="reachpath-1",
     )
 
     assert result["evidence"]["bundle_id"] == "bundle-1"
     assert result["dossier"]["dossier_id"] == "argus-1"
+    assert result["dossier"]["relationship_paths"] == [{"degree": 2, "steps": []}]
+    assert result["dossier"]["contact_strategy"]["recommendation"] == "warm_introduction"
     assert len(result["strategies"]["scenarios"]) == 3
     assert result["report"]["report_run_id"] == "report-1"

@@ -19,6 +19,7 @@ def generate_strategies(request: dict[str, Any], dossier: dict[str, Any]) -> dic
     """Create safe, editable outreach hypotheses from verified dossier fields."""
     name, company, title = _target(dossier, request)
     relationships = dossier.get("relationships") or dossier.get("relationship_paths") or []
+    contact_strategy = dossier.get("contact_strategy") or {}
     evidence = dossier.get("evidence") or []
     contact_points = dossier.get("contact_points") or []
     company_label = f" chez {company}" if company else ""
@@ -72,6 +73,8 @@ def generate_strategies(request: dict[str, Any], dossier: dict[str, Any]) -> dic
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "target": {"name": name, "company": company, "title": title},
         "scenarios": scenarios,
+        "relationship_paths": relationships,
+        "contact_strategy": contact_strategy,
         "contact_points": contact_points,
         "evidence_count": len(evidence),
         "limitations": sorted(set(limitations)),

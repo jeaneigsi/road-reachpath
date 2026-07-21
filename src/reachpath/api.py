@@ -12,6 +12,7 @@ from .domain import (
     ApiKeyCreateRequest,
     ApiKeyResponse,
     CrmImportResponse,
+    ResearchClarificationRequest,
     ResearchRequest,
     ResearchRunListResponse,
     ResearchRun,
@@ -72,10 +73,16 @@ async def _execute(app: FastAPI, run_id: UUID, workspace_id: str) -> None:
             run_id=str(run_id),
         )
         usage = UsageMetrics.model_validate(result.get("evidence", {}).get("usage", {}) or {})
+        dossier_status = str((result.get("dossier") or {}).get("status", "")).lower()
+        run_status = (
+            RunStatus.NEEDS_CLARIFICATION
+            if dossier_status in {"ambiguous", "needs_review", "not_found"}
+            else RunStatus.COMPLETED
+        )
         store.update(
             workspace_id,
             run_id,
-            status=RunStatus.COMPLETED,
+            status=run_status,
             result=result,
             usage=usage,
         )
@@ -332,6 +339,27 @@ def create_app(settings: Any | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Research run not found")
         if run.status in {RunStatus.QUEUED, RunStatus.RUNNING}:
             run = app.state.store.update(workspace_id, run_id, status=RunStatus.CANCELLED) or run
+        return _response(run, workspace_id)
+
+    @app.post(
+        "/v1/research/runs/{run_id}/clarify",
+        response_model=ResearchRunResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    async def clarify_research(
+        run_id: UUID,
+        request: ResearchClarificationRequest,
+        background_tasks: BackgroundTasks,
+        workspace_id: str = Depends(workspace_context),
+    ) -> ResearchRunResponse:
+        run = app.state.store.requeue_with_request(workspace_id, run_id, request)
+        if run is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Research run is not awaiting clarification",
+            )
+        if app.state.settings.auto_execute:
+            background_tasks.add_task(_execute, app, run.id, workspace_id)
         return _response(run, workspace_id)
 
     return app

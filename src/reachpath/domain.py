@@ -26,6 +26,7 @@ class UsageMetrics(BaseModel):
 
 class ResearchRequest(BaseModel):
     person: str = Field(min_length=2, max_length=240)
+    source_person: str | None = Field(default=None, max_length=240)
     company: str | None = Field(default=None, max_length=240)
     objective: str = Field(min_length=3, max_length=2_000)
     location: str | None = Field(default=None, max_length=240)
@@ -35,6 +36,10 @@ class ResearchRequest(BaseModel):
     dry_run: bool | None = None
     max_cost_usd: float = Field(default=1.0, gt=0, le=100)
     max_duration_seconds: int = Field(default=300, gt=0, le=86_400)
+
+
+class ResearchClarificationRequest(ResearchRequest):
+    """Full replacement request used after an identity review."""
 
 
 class CrmContact(BaseModel):

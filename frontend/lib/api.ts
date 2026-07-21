@@ -11,7 +11,12 @@ export type ResearchRun = {
   workspace_id: string;
   status: RunStatus;
   result?: {
-    dossier?: Record<string, unknown>;
+    dossier?: {
+      relationship_paths?: RelationshipPath[];
+      connection_source?: string;
+      contact_strategy?: { recommendation?: string; confidence?: number; risk?: string };
+      [key: string]: unknown;
+    };
     strategies?: {
       scenarios?: StrategyScenario[];
       limitations?: string[];
@@ -20,6 +25,13 @@ export type ResearchRun = {
     report?: Record<string, unknown>;
   };
   error?: string;
+};
+
+export type RelationshipPath = {
+  degree?: number;
+  introduction_confidence?: number;
+  introduction_risk?: string;
+  steps?: Array<Record<string, unknown>>;
 };
 
 export type StrategyScenario = {
@@ -45,6 +57,7 @@ function headers(workspaceId: string): HeadersInit {
 
 export async function createResearch(input: {
   person: string;
+  sourcePerson?: string;
   company?: string;
   objective: string;
   location?: string;
@@ -55,6 +68,7 @@ export async function createResearch(input: {
     headers: headers(input.workspaceId),
     body: JSON.stringify({
       person: input.person,
+      source_person: input.sourcePerson || null,
       company: input.company || null,
       objective: input.objective,
       location: input.location || null,
@@ -68,6 +82,25 @@ export async function getResearch(runId: string, workspaceId: string): Promise<R
   const response = await fetch(`${baseUrl}/api/research/runs/${runId}`, {
     headers: headers(workspaceId),
     cache: "no-store",
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+}
+
+export async function clarifyResearch(
+  runId: string,
+  input: { person: string; sourcePerson?: string; company?: string; objective: string; location?: string; workspaceId: string },
+): Promise<ResearchRun> {
+  const response = await fetch(`/api/research/runs/${runId}/clarify`, {
+    method: "POST",
+    headers: headers(input.workspaceId),
+    body: JSON.stringify({
+      person: input.person,
+      source_person: input.sourcePerson || null,
+      company: input.company || null,
+      objective: input.objective,
+      location: input.location || null,
+    }),
   });
   if (!response.ok) throw new Error(await response.text());
   return response.json();

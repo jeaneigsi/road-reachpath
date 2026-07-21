@@ -14,6 +14,9 @@ app.add_typer(worker_app, name="worker")
 def research(
     person: str = typer.Option(..., help="Nom de la personne cible"),
     objective: str = typer.Option(..., help="Objectif de prospection"),
+    source_person: str | None = typer.Option(
+        None, help="Nom d'une relation ou du point de départ professionnel"
+    ),
     company: str | None = typer.Option(None),
     api_url: str = typer.Option("http://127.0.0.1:8020"),
     workspace_id: str = typer.Option("local", help="Organisation ReachPath"),
@@ -22,7 +25,13 @@ def research(
     wait: bool = typer.Option(True, "--wait/--no-wait", help="Attendre le dossier final"),
     timeout_seconds: int = typer.Option(300, min=1, max=86_400),
 ) -> None:
-    payload = {"person": person, "company": company, "objective": objective, "dry_run": dry_run}
+    payload = {
+        "person": person,
+        "source_person": source_person,
+        "company": company,
+        "objective": objective,
+        "dry_run": dry_run,
+    }
     headers = {"X-Workspace-ID": workspace_id}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -30,14 +39,14 @@ def research(
         response = client.post("/v1/research/runs", json=payload)
         response.raise_for_status()
         body = response.json()
-        if wait and body["status"] not in {"completed", "failed", "cancelled"}:
+        if wait and body["status"] not in {"completed", "needs_clarification", "failed", "cancelled"}:
             deadline = time.monotonic() + timeout_seconds
             while time.monotonic() < deadline:
                 time.sleep(1)
                 response = client.get(f"/v1/research/runs/{body['run_id']}")
                 response.raise_for_status()
                 body = response.json()
-                if body["status"] in {"completed", "failed", "cancelled"}:
+                if body["status"] in {"completed", "needs_clarification", "failed", "cancelled"}:
                     break
             else:
                 raise typer.BadParameter("La recherche n'est pas terminée dans le délai demandé")

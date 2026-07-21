@@ -4,3 +4,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ runI
   const { runId } = await params;
   return proxyApi(`/v1/research/runs/${encodeURIComponent(runId)}`, request);
 }
+
+export async function POST(request: Request, { params }: { params: Promise<{ runId: string }> }) {
+  const { runId } = await params;
+  return proxyApi(`/v1/research/runs/${encodeURIComponent(runId)}/clarify`, request);
+}
