@@ -45,7 +45,7 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 - [x] Authentification, workspace, rôles de clé (`reader`, `operator`, `admin`) et permissions de mutation.
 - [ ] Chiffrement des secrets et rotation des clés de service.
 - [x] Journal d'audit et export des traitements par workspace.
-- [ ] Opt-out, suppression et export des données d'une personne.
+- [x] Suppression et export des recherches/contacts d'une personne par workspace ; opt-out externe reste à synchroniser avec ARGUS.
 - [x] Quotas par organisation, estimation des coûts et arrêt sur budget.
 - [x] Timeouts et retries bornés sur les appels interservices ; rate limiting et circuit breakers restent à livrer.
 - [x] Logs structurés, métriques, traces et corrélation interservices.

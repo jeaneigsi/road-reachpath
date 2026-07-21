@@ -180,6 +180,36 @@ def test_research_is_rejected_when_workspace_budget_is_exhausted(tmp_path) -> No
     assert blocked.json()["detail"]["code"] == "monthly_budget_exceeded"
 
 
+def test_privacy_export_and_delete_are_workspace_scoped(tmp_path) -> None:
+    api = client(tmp_path)
+    created = api.post(
+        "/v1/research/runs",
+        json={"person": "Nadia Karim", "objective": "Obtenir un rendez-vous", "dry_run": True},
+        headers={"X-Workspace-ID": "acme"},
+    )
+    run_id = created.json()["run_id"]
+    exported = api.get(
+        "/v1/privacy/people/Nadia%20Karim/export",
+        headers={"X-Workspace-ID": "acme"},
+    )
+    assert exported.status_code == 200
+    assert exported.json()["research_runs"][0]["run_id"] == run_id
+    assert api.get(
+        "/v1/privacy/people/Nadia%20Karim/export",
+        headers={"X-Workspace-ID": "other"},
+    ).json()["research_runs"] == []
+
+    deleted = api.delete(
+        "/v1/privacy/people/Nadia%20Karim",
+        headers={"X-Workspace-ID": "acme"},
+    )
+    assert deleted.status_code == 200
+    assert deleted.json()["deleted"]["research_runs"] == 1
+    assert api.get(
+        f"/v1/research/runs/{run_id}", headers={"X-Workspace-ID": "acme"}
+    ).status_code == 404
+
+
 def test_production_auth_scopes_workspace(tmp_path) -> None:
     settings = Settings(
         database_url=f"sqlite:///{tmp_path / 'auth.db'}",

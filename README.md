@@ -82,6 +82,16 @@ Après une recherche terminée, ReachPath expose aussi :
 - `GET /v1/audit/events?limit=200`
 - `GET /v1/audit/export`
 
+Pour la conformité, un workspace peut exporter puis supprimer les données
+ReachPath d'une personne :
+
+- `GET /v1/privacy/people/{person_name}/export`
+- `DELETE /v1/privacy/people/{person_name}`
+
+Ces opérations sont limitées au workspace authentifié et inscrites dans le
+journal d'audit. L'opt-out ARGUS devra être synchronisé séparément lors de la
+prochaine intégration de gouvernance.
+
 La stratégie contient trois scénarios éditables (introduction, pertinence
 directe, insight d'abord), les formulations proposées et les limites qui
 imposent une validation humaine.

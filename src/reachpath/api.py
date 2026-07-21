@@ -285,6 +285,28 @@ def create_app(settings: Any | None = None) -> FastAPI:
     ) -> list[AuditEventResponse]:
         return app.state.store.list_audit_events(workspace_id, 2_000)
 
+    @app.get("/v1/privacy/people/{person_name}/export")
+    async def privacy_export(
+        person_name: str,
+        workspace_id: str = Depends(workspace_context),
+    ) -> dict[str, Any]:
+        result = app.state.store.privacy_export(workspace_id, person_name)
+        app.state.store.record_audit(
+            workspace_id, "privacy.exported", "person", person_name
+        )
+        return result
+
+    @app.delete("/v1/privacy/people/{person_name}")
+    async def privacy_delete(
+        person_name: str,
+        workspace_id: str = Depends(operator_context),
+    ) -> dict[str, Any]:
+        deleted = app.state.store.privacy_delete(workspace_id, person_name)
+        app.state.store.record_audit(
+            workspace_id, "privacy.deleted", "person", person_name, deleted
+        )
+        return {"workspace_id": workspace_id, "person": person_name, "deleted": deleted}
+
     @app.post("/v1/connectors/crm/import", response_model=CrmImportResponse)
     async def import_crm_csv(
         file: UploadFile = File(...),

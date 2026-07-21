@@ -396,6 +396,66 @@ class RunStore:
                 for record in records
             ]
 
+    def privacy_export(self, workspace_id: str, person_name: str) -> dict[str, Any]:
+        target = person_name.strip().casefold()
+        with Session(self.engine) as session:
+            runs = session.scalars(
+                select(ResearchRunRecord).where(ResearchRunRecord.workspace_id == workspace_id)
+            ).all()
+            contacts = session.scalars(
+                select(CrmContactRecord).where(CrmContactRecord.workspace_id == workspace_id)
+            ).all()
+            matching_runs = []
+            for record in runs:
+                if str((record.request_json or {}).get("person", "")).casefold() != target:
+                    continue
+                run = self._to_domain(record).model_dump(mode="json")
+                run["run_id"] = run.pop("id")
+                matching_runs.append(run)
+            matching_contacts = [
+                CrmContactResponse(
+                    contact_id=record.contact_id,
+                    full_name=record.full_name,
+                    email=record.email,
+                    company_name=record.company_name,
+                    company_domain=record.company_domain,
+                    job_title=record.job_title,
+                    location=record.location,
+                    relationship_strength=record.relationship_strength,
+                    source_id=record.source_id,
+                ).model_dump(mode="json")
+                for record in contacts
+                if record.full_name.casefold() == target
+            ]
+        return {
+            "workspace_id": workspace_id,
+            "person": person_name,
+            "research_runs": matching_runs,
+            "crm_contacts": matching_contacts,
+        }
+
+    def privacy_delete(self, workspace_id: str, person_name: str) -> dict[str, int]:
+        target = person_name.strip().casefold()
+        deleted_runs = 0
+        deleted_contacts = 0
+        with Session(self.engine) as session:
+            runs = session.scalars(
+                select(ResearchRunRecord).where(ResearchRunRecord.workspace_id == workspace_id)
+            ).all()
+            for record in runs:
+                if str((record.request_json or {}).get("person", "")).casefold() == target:
+                    session.delete(record)
+                    deleted_runs += 1
+            contacts = session.scalars(
+                select(CrmContactRecord).where(CrmContactRecord.workspace_id == workspace_id)
+            ).all()
+            for record in contacts:
+                if record.full_name.casefold() == target:
+                    session.delete(record)
+                    deleted_contacts += 1
+            session.commit()
+        return {"research_runs": deleted_runs, "crm_contacts": deleted_contacts}
+
     def update(
         self,
         workspace_id: str,
