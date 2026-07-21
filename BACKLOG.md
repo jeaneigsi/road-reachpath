@@ -65,7 +65,8 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 ## P2 — frontend web
 
 - [ ] Authentification et onboarding organisation.
-- [x] Formulaire de nouvelle recherche avec clarification guidée de premier niveau.
+- [x] Formulaire de nouvelle recherche initiale.
+- [ ] Clarification guidée avec reprise d'une recherche `needs_clarification`.
 - [x] Vue temps réel de progression de la recherche.
 - [ ] Vue dossier personne/entreprise avec preuves et niveaux de confiance.
 - [ ] Carte des relations et filtres par profondeur.
