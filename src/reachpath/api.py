@@ -12,6 +12,7 @@ from .domain import (
     ApiKeyCreateRequest,
     ApiKeyResponse,
     AuditEventResponse,
+    CrmConnectionResponse,
     CrmImportResponse,
     ResearchClarificationRequest,
     ResearchRequest,
@@ -19,8 +20,10 @@ from .domain import (
     ResearchRun,
     ResearchRunResponse,
     RunStatus,
+    OAuthStartResponse,
     UsageMetrics,
 )
+from .crm_oauth import CrmOAuthClient
 from .orchestrator import ProspectingOrchestrator
 from .settings import get_settings
 from .store import IdempotencyConflictError, RunStore
@@ -134,8 +137,12 @@ def create_app(settings: Any | None = None) -> FastAPI:
         allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-API-Key", "X-Workspace-ID"],
     )
     app.state.settings = settings
-    app.state.store = RunStore(settings.database_url)
+    app.state.store = RunStore(
+        settings.database_url,
+        create_schema=settings.environment != "production" or settings.database_url.startswith("sqlite"),
+    )
     app.state.orchestrator = ProspectingOrchestrator(settings)
+    app.state.crm_oauth = CrmOAuthClient(settings)
 
     @app.middleware("http")
     async def request_context(request, call_next):
@@ -352,6 +359,158 @@ def create_app(settings: Any | None = None) -> FastAPI:
         if not 1 <= limit <= 2_000:
             raise HTTPException(status_code=400, detail="limit must be between 1 and 2000")
         return {"items": app.state.store.list_crm_contacts(workspace_id, limit)}
+
+    @app.get("/v1/connectors/crm/connections", response_model=list[CrmConnectionResponse])
+    async def list_crm_connections(
+        workspace_id: str = Depends(workspace_context),
+    ) -> list[CrmConnectionResponse]:
+        return app.state.store.list_crm_connections(workspace_id)
+
+    @app.get("/v1/connectors/crm/{provider}/oauth/start", response_model=OAuthStartResponse)
+    async def start_crm_oauth(
+        provider: str,
+        workspace_id: str = Depends(operator_context),
+    ) -> OAuthStartResponse:
+        try:
+            app.state.crm_oauth.security()
+            config = app.state.crm_oauth.config(provider)
+        except ValueError as exc:
+            detail = str(exc)
+            code = 404 if detail.startswith("Unsupported CRM provider") else 503
+            raise HTTPException(status_code=code, detail=detail) from exc
+        state, expires_at = app.state.store.create_oauth_state(
+            workspace_id,
+            config.provider.value,
+            max(60, int(settings.oauth_state_ttl_seconds)),
+        )
+        app.state.store.record_audit(
+            workspace_id,
+            "crm.oauth_started",
+            "crm_provider",
+            config.provider.value,
+        )
+        return OAuthStartResponse(
+            provider=config.provider,
+            authorization_url=app.state.crm_oauth.authorization_url(provider, state),
+            expires_at=expires_at,
+        )
+
+    @app.get("/v1/connectors/crm/{provider}/oauth/callback")
+    async def complete_crm_oauth(
+        provider: str,
+        state: str,
+        code: str | None = None,
+        error: str | None = None,
+    ) -> dict[str, Any]:
+        try:
+            normalized_provider = app.state.crm_oauth.config(provider).provider.value
+        except ValueError as exc:
+            detail = str(exc)
+            code_status = 404 if detail.startswith("Unsupported CRM provider") else 503
+            raise HTTPException(status_code=code_status, detail=detail) from exc
+        consumed = app.state.store.consume_oauth_state(normalized_provider, state)
+        if consumed is None:
+            raise HTTPException(status_code=400, detail="Invalid, expired, or already used OAuth state")
+        workspace_id, _expires_at = consumed
+        if error:
+            app.state.store.record_audit(
+                workspace_id,
+                "crm.oauth_failed",
+                "crm_provider",
+                normalized_provider,
+                {"error": error[:200]},
+            )
+            raise HTTPException(status_code=400, detail=f"CRM authorization was denied: {error}")
+        if not code:
+            raise HTTPException(status_code=400, detail="OAuth callback did not include an authorization code")
+        try:
+            token = await app.state.crm_oauth.exchange_code(normalized_provider, code)
+            cipher = app.state.crm_oauth.security()
+            connection = app.state.store.upsert_crm_connection(
+                workspace_id,
+                normalized_provider,
+                access_token_enc=cipher.encrypt(token.access_token) or "",
+                refresh_token_enc=cipher.encrypt(token.refresh_token),
+                external_account_id=token.external_account_id,
+                api_domain=token.api_domain,
+                scope=token.scope,
+                expires_at=token.expires_at,
+            )
+        except (httpx.HTTPError, ValueError) as exc:
+            app.state.store.record_audit(
+                workspace_id,
+                "crm.oauth_failed",
+                "crm_provider",
+                normalized_provider,
+                {"error": str(exc)[:200]},
+            )
+            raise HTTPException(status_code=502, detail="CRM OAuth token exchange failed") from exc
+        app.state.store.record_audit(
+            workspace_id,
+            "crm.oauth_connected",
+            "crm_connection",
+            connection.connection_id,
+            {"provider": normalized_provider},
+        )
+        return {
+            "connection_id": connection.connection_id,
+            "provider": connection.provider,
+            "status": connection.status,
+        }
+
+    @app.post(
+        "/v1/connectors/crm/connections/{connection_id}/refresh",
+        response_model=CrmConnectionResponse,
+    )
+    async def refresh_crm_connection(
+        connection_id: str,
+        workspace_id: str = Depends(operator_context),
+    ) -> CrmConnectionResponse:
+        secret = app.state.store.get_crm_connection_secret(workspace_id, connection_id)
+        if secret is None:
+            raise HTTPException(status_code=404, detail="CRM connection not found")
+        if not secret.get("refresh_token_enc"):
+            raise HTTPException(status_code=409, detail="CRM connection has no refresh token")
+        try:
+            cipher = app.state.crm_oauth.security()
+            refresh_token = cipher.decrypt(secret["refresh_token_enc"])
+            if not refresh_token:
+                raise ValueError("CRM refresh token is empty")
+            token = await app.state.crm_oauth.refresh(secret["provider"], refresh_token)
+            connection = app.state.store.update_crm_connection_tokens(
+                workspace_id,
+                connection_id,
+                access_token_enc=cipher.encrypt(token.access_token) or "",
+                refresh_token_enc=cipher.encrypt(token.refresh_token),
+                expires_at=token.expires_at,
+            )
+        except (httpx.HTTPError, ValueError) as exc:
+            app.state.store.record_audit(
+                workspace_id,
+                "crm.oauth_refresh_failed",
+                "crm_connection",
+                connection_id,
+                {"error": str(exc)[:200]},
+            )
+            raise HTTPException(status_code=502, detail="CRM OAuth refresh failed") from exc
+        if connection is None:
+            raise HTTPException(status_code=404, detail="CRM connection not found")
+        app.state.store.record_audit(
+            workspace_id, "crm.oauth_refreshed", "crm_connection", connection_id
+        )
+        return connection
+
+    @app.delete("/v1/connectors/crm/connections/{connection_id}")
+    async def delete_crm_connection(
+        connection_id: str,
+        workspace_id: str = Depends(operator_context),
+    ) -> dict[str, bool]:
+        if not app.state.store.delete_crm_connection(workspace_id, connection_id):
+            raise HTTPException(status_code=404, detail="CRM connection not found")
+        app.state.store.record_audit(
+            workspace_id, "crm.oauth_disconnected", "crm_connection", connection_id
+        )
+        return {"deleted": True}
 
     @app.post(
         "/v1/research/runs",

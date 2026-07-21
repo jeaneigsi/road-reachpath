@@ -73,6 +73,28 @@ Les contacts sont stockés par workspace et projetés dans le graphe ARGUS avec
 un statut `authorized`. La lecture se fait via
 `GET /v1/connectors/crm/contacts`.
 
+### Connexions CRM OAuth
+
+ReachPath peut connecter un workspace à HubSpot, Salesforce ou Pipedrive. Les
+tokens d'accès et de rafraîchissement sont chiffrés avec
+`REACHPATH_OAUTH_ENCRYPTION_KEY` (clé Fernet fournie par le gestionnaire de
+secrets du déploiement) et ne sont jamais retournés par l'API. Configurer les
+identifiants et l'URL de callback du fournisseur dans `.env`, puis :
+
+1. une clé `operator` appelle `GET /v1/connectors/crm/{provider}/oauth/start` ;
+2. l'utilisateur autorise l'application chez le fournisseur ;
+3. le fournisseur redirige vers l'URL de callback avec `code` et `state` ;
+4. ReachPath échange le code, enregistre la connexion et permet le
+   rafraîchissement via `POST /v1/connectors/crm/connections/{id}/refresh`.
+
+Les connexions du workspace sont listées par
+`GET /v1/connectors/crm/connections` et supprimées par
+`DELETE /v1/connectors/crm/connections/{id}`. L'état OAuth est opaque, lié au
+workspace, à usage unique et expire après `REACHPATH_OAUTH_STATE_TTL_SECONDS`.
+Cette première tranche couvre l'autorisation et le stockage sûr ; la
+synchronisation périodique des contacts et les webhooks restent une étape
+distincte.
+
 Après une recherche terminée, ReachPath expose aussi :
 
 - `GET /v1/research/runs?limit=50`

@@ -21,6 +21,12 @@ class ApiKeyRole(StrEnum):
     ADMIN = "admin"
 
 
+class CrmProvider(StrEnum):
+    HUBSPOT = "hubspot"
+    SALESFORCE = "salesforce"
+    PIPEDRIVE = "pipedrive"
+
+
 class UsageMetrics(BaseModel):
     search_calls: int = Field(default=0, ge=0)
     model_calls: int = Field(default=0, ge=0)
@@ -67,6 +73,24 @@ class CrmImportResponse(BaseModel):
     source_id: str
     imported: int
     argus_projection: dict[str, Any] | None = None
+
+
+class CrmConnectionResponse(BaseModel):
+    connection_id: str
+    provider: CrmProvider
+    status: str
+    external_account_id: str | None = None
+    api_domain: str | None = None
+    scope: str | None = None
+    expires_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class OAuthStartResponse(BaseModel):
+    provider: CrmProvider
+    authorization_url: str
+    expires_at: datetime
 
 
 class ApiKeyCreateRequest(BaseModel):

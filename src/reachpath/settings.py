@@ -25,6 +25,17 @@ class Settings(BaseSettings):
     service_retry_backoff_seconds: float = 0.25
     monthly_budget_usd: float = 100.0
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    oauth_encryption_key: str | None = None
+    oauth_state_ttl_seconds: int = 600
+    hubspot_client_id: str | None = None
+    hubspot_client_secret: str | None = None
+    hubspot_redirect_uri: str | None = None
+    salesforce_client_id: str | None = None
+    salesforce_client_secret: str | None = None
+    salesforce_redirect_uri: str | None = None
+    pipedrive_client_id: str | None = None
+    pipedrive_client_secret: str | None = None
+    pipedrive_redirect_uri: str | None = None
 
 
 @lru_cache

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import json
 import secrets
@@ -14,6 +14,8 @@ from sqlalchemy.pool import StaticPool
 from .domain import (
     CrmContact,
     CrmContactResponse,
+    CrmConnectionResponse,
+    CrmProvider,
     ApiKeyResponse,
     ApiKeyRole,
     AuditEventResponse,
@@ -90,6 +92,36 @@ class AuditEventRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
 
+class CrmOAuthStateRecord(Base):
+    __tablename__ = "crm_oauth_states"
+    __table_args__ = (UniqueConstraint("state_hash"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(128), index=True)
+    provider: Mapped[str] = mapped_column(String(40), index=True)
+    state_hash: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CrmConnectionRecord(Base):
+    __tablename__ = "crm_connections"
+    __table_args__ = (UniqueConstraint("workspace_id", "provider"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(128), index=True)
+    provider: Mapped[str] = mapped_column(String(40), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="connected")
+    external_account_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    api_domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    scope: Mapped[str | None] = mapped_column(String(2_000), nullable=True)
+    access_token_enc: Mapped[str] = mapped_column(String(10_000))
+    refresh_token_enc: Mapped[str | None] = mapped_column(String(10_000), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class RunStore:
     """Durable run repository with workspace scoping.
 
@@ -97,13 +129,14 @@ class RunStore:
     PostgreSQL SQLAlchemy URL.
     """
 
-    def __init__(self, database_url: str) -> None:
+    def __init__(self, database_url: str, *, create_schema: bool = True) -> None:
         connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
         kwargs: dict[str, Any] = {"connect_args": connect_args, "pool_pre_ping": True}
         if database_url in {"sqlite://", "sqlite:///:memory:"}:
             kwargs["poolclass"] = StaticPool
         self.engine = create_engine(database_url, **kwargs)
-        Base.metadata.create_all(self.engine)
+        if create_schema:
+            Base.metadata.create_all(self.engine)
 
     def create(
         self,
@@ -196,7 +229,7 @@ class RunStore:
 
     def ready(self) -> None:
         with self.engine.connect() as connection:
-            connection.exec_driver_sql("SELECT 1")
+            connection.exec_driver_sql("SELECT 1 FROM research_runs LIMIT 1")
 
     def record_audit(
         self,
@@ -219,6 +252,166 @@ class RunStore:
             session.add(event)
             session.commit()
         return self._audit_response(event)
+
+    def create_oauth_state(
+        self, workspace_id: str, provider: str, ttl_seconds: int
+    ) -> tuple[str, datetime]:
+        state = secrets.token_urlsafe(32)
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(seconds=ttl_seconds)
+        record = CrmOAuthStateRecord(
+            id=str(uuid4()),
+            workspace_id=workspace_id,
+            provider=provider,
+            state_hash=self._key_hash(state),
+            expires_at=expires_at,
+        )
+        with Session(self.engine) as session:
+            session.add(record)
+            session.commit()
+        return state, expires_at
+
+    def consume_oauth_state(self, provider: str, state: str) -> tuple[str, datetime] | None:
+        now = datetime.now(timezone.utc)
+        with Session(self.engine) as session:
+            record = session.scalar(
+                select(CrmOAuthStateRecord).where(
+                    CrmOAuthStateRecord.provider == provider,
+                    CrmOAuthStateRecord.state_hash == self._key_hash(state),
+                    CrmOAuthStateRecord.used_at.is_(None),
+                    CrmOAuthStateRecord.expires_at > now,
+                )
+            )
+            if record is None:
+                return None
+            record.used_at = now
+            session.commit()
+            return record.workspace_id, record.expires_at
+
+    def upsert_crm_connection(
+        self,
+        workspace_id: str,
+        provider: str,
+        *,
+        access_token_enc: str,
+        refresh_token_enc: str | None,
+        external_account_id: str | None,
+        api_domain: str | None,
+        scope: str | None,
+        expires_at: datetime | None,
+    ) -> CrmConnectionResponse:
+        now = datetime.now(timezone.utc)
+        with Session(self.engine, expire_on_commit=False) as session:
+            record = session.scalar(
+                select(CrmConnectionRecord).where(
+                    CrmConnectionRecord.workspace_id == workspace_id,
+                    CrmConnectionRecord.provider == provider,
+                )
+            )
+            if record is None:
+                record = CrmConnectionRecord(
+                    id=str(uuid4()),
+                    workspace_id=workspace_id,
+                    provider=provider,
+                    created_at=now,
+                )
+                session.add(record)
+            record.status = "connected"
+            record.access_token_enc = access_token_enc
+            record.refresh_token_enc = refresh_token_enc
+            record.external_account_id = external_account_id
+            record.api_domain = api_domain
+            record.scope = scope
+            record.expires_at = expires_at
+            record.updated_at = now
+            session.commit()
+            return self._crm_connection_response(record)
+
+    def list_crm_connections(self, workspace_id: str) -> list[CrmConnectionResponse]:
+        with Session(self.engine) as session:
+            records = session.scalars(
+                select(CrmConnectionRecord)
+                .where(CrmConnectionRecord.workspace_id == workspace_id)
+                .order_by(CrmConnectionRecord.updated_at.desc())
+            ).all()
+            return [self._crm_connection_response(record) for record in records]
+
+    def get_crm_connection_secret(
+        self, workspace_id: str, connection_id: str
+    ) -> dict[str, Any] | None:
+        with Session(self.engine) as session:
+            record = session.scalar(
+                select(CrmConnectionRecord).where(
+                    CrmConnectionRecord.workspace_id == workspace_id,
+                    CrmConnectionRecord.id == connection_id,
+                )
+            )
+            if record is None:
+                return None
+            return {
+                "connection_id": record.id,
+                "provider": record.provider,
+                "access_token_enc": record.access_token_enc,
+                "refresh_token_enc": record.refresh_token_enc,
+                "external_account_id": record.external_account_id,
+                "api_domain": record.api_domain,
+                "scope": record.scope,
+                "expires_at": record.expires_at,
+            }
+
+    def update_crm_connection_tokens(
+        self,
+        workspace_id: str,
+        connection_id: str,
+        *,
+        access_token_enc: str,
+        refresh_token_enc: str | None,
+        expires_at: datetime | None,
+    ) -> CrmConnectionResponse | None:
+        with Session(self.engine, expire_on_commit=False) as session:
+            record = session.scalar(
+                select(CrmConnectionRecord).where(
+                    CrmConnectionRecord.workspace_id == workspace_id,
+                    CrmConnectionRecord.id == connection_id,
+                )
+            )
+            if record is None:
+                return None
+            record.access_token_enc = access_token_enc
+            record.refresh_token_enc = refresh_token_enc
+            record.expires_at = expires_at
+            record.status = "connected"
+            record.updated_at = datetime.now(timezone.utc)
+            session.commit()
+            return self._crm_connection_response(record)
+
+    def delete_crm_connection(self, workspace_id: str, connection_id: str) -> bool:
+        with Session(self.engine) as session:
+            record = session.scalar(
+                select(CrmConnectionRecord).where(
+                    CrmConnectionRecord.workspace_id == workspace_id,
+                    CrmConnectionRecord.id == connection_id,
+                )
+            )
+            if record is None:
+                return False
+            session.delete(record)
+            session.commit()
+            return True
+
+    @staticmethod
+    def _crm_connection_response(record: CrmConnectionRecord) -> CrmConnectionResponse:
+        return CrmConnectionResponse(
+            connection_id=record.id,
+            provider=CrmProvider(record.provider),
+            status=record.status,
+            external_account_id=record.external_account_id,
+            api_domain=record.api_domain,
+            scope=record.scope,
+            expires_at=record.expires_at,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+        )
 
     def list_audit_events(self, workspace_id: str, limit: int = 200) -> list[AuditEventResponse]:
         with Session(self.engine) as session:

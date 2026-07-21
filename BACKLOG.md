@@ -36,14 +36,14 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 - [x] Classer les intermédiaires selon proximité, confiance, pertinence et fraîcheur via le score ARGUS.
 - [x] Identifier les points de contact professionnels disponibles et leur provenance.
 - [ ] Détecter contradictions, doublons et données obsolètes.
-- [ ] Générer plusieurs stratégies : introduction chaude, approche directe et approche contenu/événement.
-- [ ] Générer des e-mails et messages personnalisables, sans envoi automatique.
+- [x] Générer plusieurs stratégies : introduction chaude, approche directe et approche contenu/événement.
+- [x] Générer des e-mails et messages personnalisables, sans envoi automatique.
 - [x] Produire un dossier avec preuves, limites et recommandations de prospection versionnées.
 
 ## P1 — sécurité, conformité et exploitation
 
 - [x] Authentification, workspace, rôles de clé (`reader`, `operator`, `admin`) et permissions de mutation.
-- [ ] Chiffrement des secrets et rotation des clés de service.
+- [x] Chiffrement des tokens CRM OAuth au repos ; rotation des clés de service reste à livrer.
 - [x] Journal d'audit et export des traitements par workspace.
 - [x] Suppression et export des recherches/contacts d'une personne par workspace ; opt-out externe reste à synchroniser avec ARGUS.
 - [x] Quotas par organisation, estimation des coûts et arrêt sur budget.
@@ -54,9 +54,9 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 ## P1 — intégrations et API commerciale
 
 - [x] Import CSV CRM autorisé documenté, validé et projeté vers ARGUS.
-- [ ] Connecteur OAuth HubSpot.
-- [ ] Connecteur OAuth Salesforce.
-- [ ] Connecteur OAuth Pipedrive.
+- [x] Connecteur OAuth HubSpot (connexion, refresh et révocation ; sync à venir).
+- [x] Connecteur OAuth Salesforce (connexion, refresh et révocation ; sync à venir).
+- [x] Connecteur OAuth Pipedrive (connexion, refresh et révocation ; sync à venir).
 - [ ] Synchronisation périodique et webhooks entrants.
 - [x] API publique versionnée, clés d'API et scopes RBAC de base.
 - [ ] Webhooks ReachPath pour fin de recherche et rapport disponible.
