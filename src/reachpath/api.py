@@ -1,10 +1,22 @@
 from __future__ import annotations
 
+from time import perf_counter
 from typing import Any
 from uuid import UUID
 
 import httpx
-from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile, status
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
 
 from .crm import build_argus_bundle, parse_csv
@@ -26,6 +38,7 @@ from .domain import (
 )
 from .crm_oauth import CrmOAuthClient
 from .orchestrator import ProspectingOrchestrator
+from .observability import CRM_SYNCS, HTTP_DURATION, HTTP_REQUESTS, RESEARCH_RUNS, metrics_payload
 from .settings import get_settings
 from .store import IdempotencyConflictError, RunStore
 
@@ -88,6 +101,7 @@ async def _execute(app: FastAPI, run_id: UUID, workspace_id: str) -> None:
                 "research_run",
                 str(run_id),
             )
+            RESEARCH_RUNS.labels(status=RunStatus.FAILED.value).inc()
             return
         result = await app.state.orchestrator.execute(
             run.request,
@@ -115,6 +129,7 @@ async def _execute(app: FastAPI, run_id: UUID, workspace_id: str) -> None:
             str(run_id),
             {"status": run_status.value},
         )
+        RESEARCH_RUNS.labels(status=run_status.value).inc()
     except Exception as exc:  # boundary converts failures to observable run state
         store.update(workspace_id, run_id, status=RunStatus.FAILED, error=str(exc))
         store.record_audit(
@@ -124,6 +139,7 @@ async def _execute(app: FastAPI, run_id: UUID, workspace_id: str) -> None:
             str(run_id),
             {"error": str(exc)[:500]},
         )
+        RESEARCH_RUNS.labels(status=RunStatus.FAILED.value).inc()
 
 
 def create_app(settings: Any | None = None) -> FastAPI:
@@ -151,7 +167,11 @@ def create_app(settings: Any | None = None) -> FastAPI:
 
         request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
         correlation_id = request.headers.get("X-Correlation-ID") or request_id
+        started = perf_counter()
         response = await call_next(request)
+        route = getattr(request.scope.get("route"), "path", request.url.path)
+        HTTP_REQUESTS.labels(request.method, route, str(response.status_code)).inc()
+        HTTP_DURATION.labels(request.method, route).observe(perf_counter() - started)
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Correlation-ID"] = correlation_id
         return response
@@ -204,6 +224,10 @@ def create_app(settings: Any | None = None) -> FastAPI:
         if role not in {"operator", "admin"}:
             raise HTTPException(status_code=403, detail="Operator role required")
         return workspace_id
+
+    @app.get("/metrics", include_in_schema=False)
+    async def metrics(_: str = Depends(admin_context)) -> Response:
+        return Response(content=metrics_payload(), media_type="text/plain; version=0.0.4")
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -579,6 +603,7 @@ def create_app(settings: Any | None = None) -> FastAPI:
                 connection_id,
                 {"error": str(exc)[:200]},
             )
+            CRM_SYNCS.labels(provider=secret["provider"], status="failed").inc()
             raise HTTPException(status_code=502, detail="CRM contact sync failed") from exc
         app.state.store.record_audit(
             workspace_id,
@@ -587,6 +612,7 @@ def create_app(settings: Any | None = None) -> FastAPI:
             connection_id,
             {"fetched": len(contacts), "imported": imported, "refreshed": refreshed},
         )
+        CRM_SYNCS.labels(provider=secret["provider"], status="success").inc()
         return CrmSyncResponse(
             connection_id=connection_id,
             provider=secret["provider"],

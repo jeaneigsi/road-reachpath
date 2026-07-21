@@ -21,6 +21,12 @@ def test_health(tmp_path) -> None:
     assert response.headers["X-Correlation-ID"] == "req-test"
 
 
+def test_metrics_surface_is_available_in_local_mode(tmp_path) -> None:
+    response = client(tmp_path).get("/metrics")
+    assert response.status_code == 200
+    assert "reachpath_http_requests_total" in response.text
+
+
 def test_frontend_origin_is_allowed_by_cors(tmp_path) -> None:
     settings = Settings(
         database_url=f"sqlite:///{tmp_path / 'cors.db'}",
