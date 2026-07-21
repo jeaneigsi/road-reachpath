@@ -77,5 +77,23 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
 
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      REACHPATH_DOMAIN: ${REACHPATH_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - reachpath-caddy-data:/data
+      - reachpath-caddy-config:/config
+    depends_on:
+      frontend:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+
 volumes:
   reachpath-postgres:
+  reachpath-caddy-data:
+  reachpath-caddy-config:

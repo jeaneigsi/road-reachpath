@@ -83,7 +83,7 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 - [ ] Jeux de données anonymisés et benchmarks de précision.
 - [ ] Tests de charge, reprise après panne et tests de sécurité.
 - [ ] Documentation utilisateur, API, exploitation et support.
-- [x] Packaging Docker/Compose VPS ; Caddy, sauvegardes et rollback restent à livrer.
+- [x] Packaging Docker/Compose VPS, reverse proxy Caddy et sauvegarde PostgreSQL ; rollback applicatif reste à livrer.
 - [ ] CI/CD, migrations contrôlées et procédure de release.
 - [ ] Préparation commerciale : DPA, politique de confidentialité, CGU et limites d'usage.
 

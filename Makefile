@@ -1,4 +1,4 @@
-.PHONY: install test lint migrate serve worker compose-config compose-up
+.PHONY: install test lint migrate serve worker compose-config compose-up backup
 
 install:
 	python3 -m venv .venv
@@ -24,3 +24,6 @@ compose-config:
 
 compose-up:
 	docker compose up -d --build
+
+backup:
+	./scripts/backup-postgres.sh

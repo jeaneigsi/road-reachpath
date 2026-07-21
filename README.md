@@ -108,11 +108,16 @@ cp .env.example .env
 # renseigner le mot de passe PostgreSQL et les trois clés de service
 make compose-config
 make compose-up
+# sauvegarde PostgreSQL vers ./backups
+make backup
 ```
 
-Le compose démarre PostgreSQL, l'API sur `127.0.0.1:8020` et un worker. La base
-n'est jamais publiée directement. Caddy ou Nginx doit rester le seul point
-d'entrée Internet.
+Le compose démarre PostgreSQL, l'API sur `127.0.0.1:8020`, un worker, le
+frontend et Caddy. La base, l'API et le frontend ne sont pas publiés directement
+sur Internet ; Caddy est le seul point d'entrée public. Définir
+`REACHPATH_DOMAIN` avec le domaine DNS du VPS pour activer HTTPS automatique.
+La commande `make backup` crée un dump PostgreSQL horodaté et conserve les
+quatorze derniers jours dans `REACHPATH_BACKUP_DIR`.
 
 Les appels vers SearchSwarm, ARGUS et ReportForge utilisent des retries bornés
 sur les erreurs transitoires (`429`, `5xx`, réseau). Les paramètres sont

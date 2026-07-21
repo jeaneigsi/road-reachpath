@@ -1,0 +1,4 @@
+{$REACHPATH_DOMAIN:localhost} {
+    encode gzip
+    reverse_proxy frontend:3000
+}
