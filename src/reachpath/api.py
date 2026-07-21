@@ -11,6 +11,7 @@ from .crm import build_argus_bundle, parse_csv
 from .domain import (
     ApiKeyCreateRequest,
     ApiKeyResponse,
+    AuditEventResponse,
     CrmImportResponse,
     ResearchClarificationRequest,
     ResearchRequest,
@@ -76,6 +77,12 @@ async def _execute(app: FastAPI, run_id: UUID, workspace_id: str) -> None:
                 status=RunStatus.FAILED,
                 error="Monthly workspace budget exhausted before execution",
             )
+            store.record_audit(
+                workspace_id,
+                "research.budget_exhausted",
+                "research_run",
+                str(run_id),
+            )
             return
         result = await app.state.orchestrator.execute(
             run.request,
@@ -96,8 +103,22 @@ async def _execute(app: FastAPI, run_id: UUID, workspace_id: str) -> None:
             result=result,
             usage=usage,
         )
+        store.record_audit(
+            workspace_id,
+            "research.status_changed",
+            "research_run",
+            str(run_id),
+            {"status": run_status.value},
+        )
     except Exception as exc:  # boundary converts failures to observable run state
         store.update(workspace_id, run_id, status=RunStatus.FAILED, error=str(exc))
+        store.record_audit(
+            workspace_id,
+            "research.failed",
+            "research_run",
+            str(run_id),
+            {"error": str(exc)[:500]},
+        )
 
 
 def create_app(settings: Any | None = None) -> FastAPI:
@@ -206,7 +227,11 @@ def create_app(settings: Any | None = None) -> FastAPI:
         payload: ApiKeyCreateRequest,
         workspace_id: str = Depends(admin_context),
     ) -> ApiKeyResponse:
-        return app.state.store.create_api_key(workspace_id, payload.name, payload.role)
+        response = app.state.store.create_api_key(workspace_id, payload.name, payload.role)
+        app.state.store.record_audit(
+            workspace_id, "api_key.created", "api_key", response.key_id, {"role": payload.role.value}
+        )
+        return response
 
     @app.post("/v1/admin/api-keys/{key_id}/rotate", response_model=ApiKeyResponse)
     async def rotate_api_key(
@@ -216,6 +241,7 @@ def create_app(settings: Any | None = None) -> FastAPI:
         response = app.state.store.rotate_api_key(workspace_id, key_id)
         if response is None:
             raise HTTPException(status_code=404, detail="API key not found")
+        app.state.store.record_audit(workspace_id, "api_key.rotated", "api_key", key_id)
         return response
 
     @app.delete("/v1/admin/api-keys/{key_id}")
@@ -225,6 +251,7 @@ def create_app(settings: Any | None = None) -> FastAPI:
     ) -> dict[str, bool]:
         if not app.state.store.revoke_api_key(workspace_id, key_id):
             raise HTTPException(status_code=404, detail="API key not found")
+        app.state.store.record_audit(workspace_id, "api_key.revoked", "api_key", key_id)
         return {"revoked": True}
 
     @app.get("/v1/usage/quota")
@@ -241,6 +268,21 @@ def create_app(settings: Any | None = None) -> FastAPI:
             "budget_usd": budget,
             "remaining_usd": max(0.0, round(budget - consumed, 6)),
         }
+
+    @app.get("/v1/audit/events", response_model=list[AuditEventResponse])
+    async def audit_events(
+        workspace_id: str = Depends(workspace_context),
+        limit: int = 200,
+    ) -> list[AuditEventResponse]:
+        if not 1 <= limit <= 2_000:
+            raise HTTPException(status_code=400, detail="limit must be between 1 and 2000")
+        return app.state.store.list_audit_events(workspace_id, limit)
+
+    @app.get("/v1/audit/export", response_model=list[AuditEventResponse])
+    async def audit_export(
+        workspace_id: str = Depends(workspace_context),
+    ) -> list[AuditEventResponse]:
+        return app.state.store.list_audit_events(workspace_id, 2_000)
 
     @app.post("/v1/connectors/crm/import", response_model=CrmImportResponse)
     async def import_crm_csv(
@@ -270,6 +312,13 @@ def create_app(settings: Any | None = None) -> FastAPI:
             except httpx.HTTPError as exc:
                 raise HTTPException(status_code=502, detail="ARGUS CRM projection failed") from exc
         imported = app.state.store.upsert_crm_contacts(workspace_id, source_id, contacts)
+        app.state.store.record_audit(
+            workspace_id,
+            "crm.imported",
+            "crm_source",
+            source_id,
+            {"imported": imported},
+        )
         return CrmImportResponse(source_id=source_id, imported=imported, argus_projection=projection)
 
     @app.get("/v1/connectors/crm/contacts")
@@ -318,6 +367,12 @@ def create_app(settings: Any | None = None) -> FastAPI:
             )
         except IdempotencyConflictError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        app.state.store.record_audit(
+            workspace_id,
+            "research.created" if created else "research.replayed",
+            "research_run",
+            str(run.id),
+        )
         if created and app.state.settings.auto_execute:
             background_tasks.add_task(_execute, app, run.id, workspace_id)
         return _response(run, workspace_id)
@@ -382,6 +437,7 @@ def create_app(settings: Any | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Research run not found")
         if run.status in {RunStatus.QUEUED, RunStatus.RUNNING}:
             run = app.state.store.update(workspace_id, run_id, status=RunStatus.CANCELLED) or run
+            app.state.store.record_audit(workspace_id, "research.cancelled", "research_run", str(run_id))
         return _response(run, workspace_id)
 
     @app.post(
@@ -403,6 +459,7 @@ def create_app(settings: Any | None = None) -> FastAPI:
             )
         if app.state.settings.auto_execute:
             background_tasks.add_task(_execute, app, run.id, workspace_id)
+        app.state.store.record_audit(workspace_id, "research.clarified", "research_run", str(run_id))
         return _response(run, workspace_id)
 
     return app

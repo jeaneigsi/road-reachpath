@@ -16,6 +16,7 @@ from .domain import (
     CrmContactResponse,
     ApiKeyResponse,
     ApiKeyRole,
+    AuditEventResponse,
     ResearchRequest,
     ResearchRun,
     RunStatus,
@@ -75,6 +76,18 @@ class CrmContactRecord(Base):
     relationship_strength: Mapped[float] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AuditEventRecord(Base):
+    __tablename__ = "audit_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(128), index=True)
+    action: Mapped[str] = mapped_column(String(120), index=True)
+    resource_type: Mapped[str] = mapped_column(String(80))
+    resource_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
 
 class RunStore:
@@ -184,6 +197,50 @@ class RunStore:
     def ready(self) -> None:
         with self.engine.connect() as connection:
             connection.exec_driver_sql("SELECT 1")
+
+    def record_audit(
+        self,
+        workspace_id: str,
+        action: str,
+        resource_type: str,
+        resource_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> AuditEventResponse:
+        event = AuditEventRecord(
+            id=str(uuid4()),
+            workspace_id=workspace_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            metadata_json=metadata or {},
+            created_at=datetime.now(timezone.utc),
+        )
+        with Session(self.engine, expire_on_commit=False) as session:
+            session.add(event)
+            session.commit()
+        return self._audit_response(event)
+
+    def list_audit_events(self, workspace_id: str, limit: int = 200) -> list[AuditEventResponse]:
+        with Session(self.engine) as session:
+            records = session.scalars(
+                select(AuditEventRecord)
+                .where(AuditEventRecord.workspace_id == workspace_id)
+                .order_by(AuditEventRecord.created_at.desc())
+                .limit(limit)
+            ).all()
+            return [self._audit_response(record) for record in records]
+
+    @staticmethod
+    def _audit_response(record: AuditEventRecord) -> AuditEventResponse:
+        return AuditEventResponse(
+            event_id=record.id,
+            workspace_id=record.workspace_id,
+            action=record.action,
+            resource_type=record.resource_type,
+            resource_id=record.resource_id,
+            metadata=record.metadata_json or {},
+            created_at=record.created_at,
+        )
 
     @staticmethod
     def _key_hash(token: str) -> str:

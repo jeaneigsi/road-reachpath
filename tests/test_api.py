@@ -90,6 +90,12 @@ def test_create_research_is_durable_and_scoped(tmp_path) -> None:
     quota = restarted.get("/v1/usage/quota", headers=headers)
     assert quota.status_code == 200
     assert quota.json()["workspace_id"] == "acme"
+    audit = restarted.get("/v1/audit/events", headers=headers)
+    assert audit.status_code == 200
+    assert {event["action"] for event in audit.json()} >= {
+        "research.created",
+        "research.status_changed",
+    }
 
 
 def test_worker_drains_queued_run(tmp_path) -> None:

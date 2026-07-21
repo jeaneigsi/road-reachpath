@@ -85,6 +85,16 @@ class ApiKeyResponse(BaseModel):
     key: str | None = None
 
 
+class AuditEventResponse(BaseModel):
+    event_id: str
+    workspace_id: str
+    action: str
+    resource_type: str
+    resource_id: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
 class ResearchRun(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     status: RunStatus = RunStatus.QUEUED

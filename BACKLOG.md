@@ -44,7 +44,7 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 
 - [x] Authentification, workspace, rôles de clé (`reader`, `operator`, `admin`) et permissions de mutation.
 - [ ] Chiffrement des secrets et rotation des clés de service.
-- [ ] Journal d'audit et export des traitements.
+- [x] Journal d'audit et export des traitements par workspace.
 - [ ] Opt-out, suppression et export des données d'une personne.
 - [x] Quotas par organisation, estimation des coûts et arrêt sur budget.
 - [ ] Rate limiting, timeouts, retries bornés et circuit breakers.

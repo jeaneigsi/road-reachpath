@@ -79,6 +79,8 @@ Après une recherche terminée, ReachPath expose aussi :
 - `GET /v1/research/runs/{run_id}/dossier`
 - `GET /v1/research/runs/{run_id}/strategy`
 - `GET /v1/research/runs/{run_id}/report`
+- `GET /v1/audit/events?limit=200`
+- `GET /v1/audit/export`
 
 La stratégie contient trois scénarios éditables (introduction, pertinence
 directe, insight d'abord), les formulations proposées et les limites qui
