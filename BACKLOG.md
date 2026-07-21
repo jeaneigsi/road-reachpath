@@ -68,8 +68,8 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 - [x] Formulaire de nouvelle recherche initiale.
 - [x] Clarification guidée avec reprise d'une recherche `needs_clarification` via l'API.
 - [x] Vue temps réel de progression de la recherche.
-- [ ] Vue dossier personne/entreprise avec preuves et niveaux de confiance.
-- [ ] Carte des relations et filtres par profondeur.
+- [x] Vue dossier personne/entreprise avec preuves et niveaux de confiance.
+- [x] Vue relationnelle avec chemins classés par profondeur et confiance.
 - [ ] Éditeur de stratégie et de messages.
 - [ ] Export et partage sécurisé du rapport.
 - [x] Historique paginé et récupération séparée du dossier, de la stratégie et du rapport.

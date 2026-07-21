@@ -15,6 +15,9 @@ export type ResearchRun = {
       relationship_paths?: RelationshipPath[];
       connection_source?: string;
       contact_strategy?: { recommendation?: string; confidence?: number; risk?: string };
+      claims?: DossierClaim[];
+      evidence?: EvidenceItem[];
+      limitations?: string[];
       [key: string]: unknown;
     };
     strategies?: {
@@ -25,6 +28,24 @@ export type ResearchRun = {
     report?: Record<string, unknown>;
   };
   error?: string;
+};
+
+export type DossierClaim = {
+  id: string;
+  text: string;
+  status?: string;
+  confidence?: number;
+  evidence_ids?: string[];
+};
+
+export type EvidenceItem = {
+  id: string;
+  url: string;
+  title?: string;
+  snippet?: string;
+  source_type?: string;
+  confidence?: number;
+  retrieved_at?: string;
 };
 
 export type RelationshipPath = {
