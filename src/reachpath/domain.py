@@ -28,6 +28,27 @@ class ResearchRequest(BaseModel):
     max_duration_seconds: int = Field(default=300, gt=0, le=86_400)
 
 
+class CrmContact(BaseModel):
+    contact_id: str | None = Field(default=None, max_length=255)
+    full_name: str = Field(min_length=2, max_length=240)
+    email: str | None = Field(default=None, max_length=320)
+    company_name: str | None = Field(default=None, max_length=240)
+    company_domain: str | None = Field(default=None, max_length=255)
+    job_title: str | None = Field(default=None, max_length=240)
+    location: str | None = Field(default=None, max_length=240)
+    relationship_strength: float = Field(default=0.7, ge=0, le=1)
+
+
+class CrmContactResponse(CrmContact):
+    source_id: str
+
+
+class CrmImportResponse(BaseModel):
+    source_id: str
+    imported: int
+    argus_projection: dict[str, Any] | None = None
+
+
 class ResearchRun(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     status: RunStatus = RunStatus.QUEUED

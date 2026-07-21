@@ -44,6 +44,17 @@ format est `token=workspace` (plusieurs entrées séparées par des virgules). L
 token peut être envoyé avec `Authorization: Bearer <token>` ou `X-API-Key` ; un
 workspace différent de celui associé à la clé est refusé.
 
+## Import CRM autorisé
+
+Le backend accepte un export CSV professionnel sur
+`POST /v1/connectors/crm/import` en multipart, avec les champs
+`source_id`, `owner_person_id`, `owner_name` et `file`. La colonne
+`full_name` est obligatoire ; les autres colonnes suivent le format documenté
+dans [l’exemple CRM](https://github.com/jeaneigsi/road-10K/blob/main/services/argus/backend/examples/crm_contacts.csv).
+Les contacts sont stockés par workspace et projetés dans le graphe ARGUS avec
+un statut `authorized`. La lecture se fait via
+`GET /v1/connectors/crm/contacts`.
+
 ## Worker et Docker
 
 En local, l'API exécute les tâches en arrière-plan. En production, désactiver

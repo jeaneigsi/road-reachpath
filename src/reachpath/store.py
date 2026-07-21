@@ -10,7 +10,7 @@ from sqlalchemy import JSON, DateTime, String, UniqueConstraint, create_engine, 
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 from sqlalchemy.pool import StaticPool
 
-from .domain import ResearchRequest, ResearchRun, RunStatus
+from .domain import CrmContact, CrmContactResponse, ResearchRequest, ResearchRun, RunStatus
 
 
 class Base(DeclarativeBase):
@@ -29,6 +29,25 @@ class ResearchRunRecord(Base):
     request_json: Mapped[dict[str, Any]] = mapped_column(JSON)
     result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     error: Mapped[str | None] = mapped_column(String(4_000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class CrmContactRecord(Base):
+    __tablename__ = "crm_contacts"
+    __table_args__ = (UniqueConstraint("workspace_id", "source_id", "contact_id"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(128), index=True)
+    source_id: Mapped[str] = mapped_column(String(255), index=True)
+    contact_id: Mapped[str] = mapped_column(String(255))
+    full_name: Mapped[str] = mapped_column(String(240))
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    company_name: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    company_domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    job_title: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    relationship_strength: Mapped[float] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -129,6 +148,63 @@ class RunStore:
     def ready(self) -> None:
         with self.engine.connect() as connection:
             connection.exec_driver_sql("SELECT 1")
+
+    def upsert_crm_contacts(
+        self, workspace_id: str, source_id: str, contacts: list[CrmContact]
+    ) -> int:
+        now = datetime.now(timezone.utc)
+        with Session(self.engine) as session:
+            for index, contact in enumerate(contacts):
+                contact_id = contact.contact_id or f"row-{index + 2}"
+                record = session.scalar(
+                    select(CrmContactRecord).where(
+                        CrmContactRecord.workspace_id == workspace_id,
+                        CrmContactRecord.source_id == source_id,
+                        CrmContactRecord.contact_id == contact_id,
+                    )
+                )
+                if record is None:
+                    record = CrmContactRecord(
+                        id=f"{workspace_id}:{source_id}:{contact_id}",
+                        workspace_id=workspace_id,
+                        source_id=source_id,
+                        contact_id=contact_id,
+                        created_at=now,
+                    )
+                    session.add(record)
+                record.full_name = contact.full_name
+                record.email = contact.email
+                record.company_name = contact.company_name
+                record.company_domain = contact.company_domain
+                record.job_title = contact.job_title
+                record.location = contact.location
+                record.relationship_strength = contact.relationship_strength
+                record.updated_at = now
+            session.commit()
+        return len(contacts)
+
+    def list_crm_contacts(self, workspace_id: str, limit: int = 200) -> list[CrmContactResponse]:
+        with Session(self.engine) as session:
+            records = session.scalars(
+                select(CrmContactRecord)
+                .where(CrmContactRecord.workspace_id == workspace_id)
+                .order_by(CrmContactRecord.updated_at.desc())
+                .limit(limit)
+            ).all()
+            return [
+                CrmContactResponse(
+                    contact_id=record.contact_id,
+                    full_name=record.full_name,
+                    email=record.email,
+                    company_name=record.company_name,
+                    company_domain=record.company_domain,
+                    job_title=record.job_title,
+                    location=record.location,
+                    relationship_strength=record.relationship_strength,
+                    source_id=record.source_id,
+                )
+                for record in records
+            ]
 
     def update(
         self,

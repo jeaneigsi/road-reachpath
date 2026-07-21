@@ -3,9 +3,11 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, status
+import httpx
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile, status
 
-from .domain import ResearchRequest, ResearchRun, ResearchRunResponse, RunStatus
+from .crm import build_argus_bundle, parse_csv
+from .domain import CrmImportResponse, ResearchRequest, ResearchRun, ResearchRunResponse, RunStatus
 from .orchestrator import ProspectingOrchestrator
 from .settings import get_settings
 from .store import IdempotencyConflictError, RunStore
@@ -105,6 +107,45 @@ def create_app(settings: Any | None = None) -> FastAPI:
                 "langgraph_orchestration",
             ],
         }
+
+    @app.post("/v1/connectors/crm/import", response_model=CrmImportResponse)
+    async def import_crm_csv(
+        file: UploadFile = File(...),
+        source_id: str = Form(..., min_length=1, max_length=255),
+        owner_person_id: str = Form(..., min_length=1, max_length=255),
+        owner_name: str = Form(..., min_length=2, max_length=240),
+        workspace_id: str = Depends(workspace_context),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> CrmImportResponse:
+        try:
+            contacts = parse_csv(await file.read())
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        projection: dict[str, Any] | None
+        if settings.dry_run:
+            projection = {"mode": "dry_run", "contacts": len(contacts)}
+        else:
+            try:
+                projection = await app.state.orchestrator.argus.post(
+                    "/v1/ingestion/bundles",
+                    build_argus_bundle(contacts, source_id, owner_person_id, owner_name),
+                    workspace_id=workspace_id,
+                    idempotency_key=idempotency_key or f"crm-{source_id}-{workspace_id}",
+                    timeout=60,
+                )
+            except httpx.HTTPError as exc:
+                raise HTTPException(status_code=502, detail="ARGUS CRM projection failed") from exc
+        imported = app.state.store.upsert_crm_contacts(workspace_id, source_id, contacts)
+        return CrmImportResponse(source_id=source_id, imported=imported, argus_projection=projection)
+
+    @app.get("/v1/connectors/crm/contacts")
+    async def list_crm_contacts(
+        workspace_id: str = Depends(workspace_context),
+        limit: int = 200,
+    ) -> dict[str, object]:
+        if not 1 <= limit <= 2_000:
+            raise HTTPException(status_code=400, detail="limit must be between 1 and 2000")
+        return {"items": app.state.store.list_crm_contacts(workspace_id, limit)}
 
     @app.post(
         "/v1/research/runs",

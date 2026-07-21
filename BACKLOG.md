@@ -53,7 +53,7 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 
 ## P1 — intégrations et API commerciale
 
-- [ ] Import CSV CRM documenté et idempotent.
+- [x] Import CSV CRM autorisé documenté, validé et projeté vers ARGUS.
 - [ ] Connecteur OAuth HubSpot.
 - [ ] Connecteur OAuth Salesforce.
 - [ ] Connecteur OAuth Pipedrive.
