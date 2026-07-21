@@ -42,7 +42,7 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 
 ## P1 — sécurité, conformité et exploitation
 
-- [ ] Authentification, organisations, rôles et permissions.
+- [x] Authentification, workspace, rôles de clé (`reader`, `operator`, `admin`) et permissions de mutation.
 - [ ] Chiffrement des secrets et rotation des clés de service.
 - [ ] Journal d'audit et export des traitements.
 - [ ] Opt-out, suppression et export des données d'une personne.
@@ -58,7 +58,7 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 - [ ] Connecteur OAuth Salesforce.
 - [ ] Connecteur OAuth Pipedrive.
 - [ ] Synchronisation périodique et webhooks entrants.
-- [x] API publique versionnée et clés d'API ; les scopes RBAC restent à livrer.
+- [x] API publique versionnée, clés d'API et scopes RBAC de base.
 - [ ] Webhooks ReachPath pour fin de recherche et rapport disponible.
 - [ ] SDK Python et TypeScript générés depuis OpenAPI.
 

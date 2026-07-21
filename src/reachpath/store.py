@@ -15,6 +15,7 @@ from .domain import (
     CrmContact,
     CrmContactResponse,
     ApiKeyResponse,
+    ApiKeyRole,
     ResearchRequest,
     ResearchRun,
     RunStatus,
@@ -33,6 +34,7 @@ class ApiKeyRecord(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     workspace_id: Mapped[str] = mapped_column(String(128), index=True)
     name: Mapped[str] = mapped_column(String(120))
+    role: Mapped[str] = mapped_column(String(20), default=ApiKeyRole.OPERATOR.value)
     prefix: Mapped[str] = mapped_column(String(24))
     key_hash: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -197,13 +199,26 @@ class RunStore:
             )
             return record.workspace_id if record else None
 
-    def create_api_key(self, workspace_id: str, name: str) -> ApiKeyResponse:
+    def api_key_role(self, token: str) -> str | None:
+        with Session(self.engine) as session:
+            record = session.scalar(
+                select(ApiKeyRecord).where(
+                    ApiKeyRecord.key_hash == self._key_hash(token),
+                    ApiKeyRecord.revoked_at.is_(None),
+                )
+            )
+            return record.role if record else None
+
+    def create_api_key(
+        self, workspace_id: str, name: str, role: ApiKeyRole = ApiKeyRole.OPERATOR
+    ) -> ApiKeyResponse:
         token = f"rp_{secrets.token_urlsafe(32)}"
         now = datetime.now(timezone.utc)
         record = ApiKeyRecord(
             id=str(uuid4()),
             workspace_id=workspace_id,
             name=name,
+            role=role.value,
             prefix=token[:12],
             key_hash=self._key_hash(token),
             created_at=now,
@@ -230,6 +245,7 @@ class RunStore:
                 id=str(uuid4()),
                 workspace_id=workspace_id,
                 name=record.name,
+                role=record.role,
                 prefix=token[:12],
                 key_hash=self._key_hash(token),
                 created_at=datetime.now(timezone.utc),
@@ -259,6 +275,7 @@ class RunStore:
             key_id=record.id,
             workspace_id=record.workspace_id,
             name=record.name,
+            role=ApiKeyRole(record.role),
             prefix=record.prefix,
             created_at=record.created_at,
             revoked_at=record.revoked_at,

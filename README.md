@@ -52,6 +52,16 @@ dans `REACHPATH_ADMIN_API_KEYS` :
 - `POST /v1/admin/api-keys/{key_id}/rotate` — révoquer et remplacer une clé ;
 - `DELETE /v1/admin/api-keys/{key_id}` — révoquer une clé.
 
+Une clé persistante porte aussi un rôle : `reader` (lecture), `operator`
+(recherche, clarification, annulation et import CRM) ou `admin` (gestion des
+clés). Exemple :
+
+```json
+{"name": "sales-console", "role": "operator"}
+```
+
+Les clés `reader` restent limitées aux endpoints de consultation et de quota.
+
 ## Import CRM autorisé
 
 Le backend accepte un export CSV professionnel sur

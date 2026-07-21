@@ -177,3 +177,30 @@ def test_production_auth_scopes_workspace(tmp_path) -> None:
         "X-Workspace-ID": "acme",
     }
     assert api.get("/v1/usage/quota", headers=replacement_headers).status_code == 200
+
+    reader = api.post(
+        "/v1/admin/api-keys",
+        json={"name": "report-reader", "role": "reader"},
+        headers=headers,
+    )
+    assert reader.status_code == 201
+    reader_headers = {
+        "Authorization": f"Bearer {reader.json()['key']}",
+        "X-Workspace-ID": "acme",
+    }
+    assert api.get("/v1/usage/quota", headers=reader_headers).status_code == 200
+    assert api.post("/v1/research/runs", json=payload, headers=reader_headers).status_code == 403
+
+    generated_admin = api.post(
+        "/v1/admin/api-keys",
+        json={"name": "workspace-admin", "role": "admin"},
+        headers=headers,
+    )
+    assert generated_admin.status_code == 201
+    generated_admin_headers = {
+        "Authorization": f"Bearer {generated_admin.json()['key']}",
+        "X-Workspace-ID": "acme",
+    }
+    assert api.post(
+        "/v1/admin/api-keys", json={"name": "created-by-admin"}, headers=generated_admin_headers
+    ).status_code == 201

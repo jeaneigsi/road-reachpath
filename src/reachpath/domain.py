@@ -15,6 +15,12 @@ class RunStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class ApiKeyRole(StrEnum):
+    READER = "reader"
+    OPERATOR = "operator"
+    ADMIN = "admin"
+
+
 class UsageMetrics(BaseModel):
     search_calls: int = Field(default=0, ge=0)
     model_calls: int = Field(default=0, ge=0)
@@ -65,12 +71,14 @@ class CrmImportResponse(BaseModel):
 
 class ApiKeyCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
+    role: ApiKeyRole = ApiKeyRole.OPERATOR
 
 
 class ApiKeyResponse(BaseModel):
     key_id: str
     workspace_id: str
     name: str
+    role: ApiKeyRole
     prefix: str
     created_at: datetime
     revoked_at: datetime | None = None

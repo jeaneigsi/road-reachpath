@@ -142,8 +142,27 @@ def create_app(settings: Any | None = None) -> FastAPI:
             return workspace_id
         token = _token_from_headers(authorization, api_key)
         allowed = {entry.strip() for entry in settings.admin_api_keys.split(",") if entry.strip()}
-        if token not in allowed:
+        if token not in allowed and app.state.store.api_key_role(token or "") != "admin":
             raise HTTPException(status_code=403, detail="Admin API key required")
+        return workspace_id
+
+    async def role_context(
+        workspace_id: str = Depends(workspace_context),
+        authorization: str | None = Header(default=None, alias="Authorization"),
+        api_key: str | None = Header(default=None, alias="X-API-Key"),
+    ) -> str:
+        if not settings.require_auth:
+            return "admin"
+        token = _token_from_headers(authorization, api_key)
+        role = app.state.store.api_key_role(token or "")
+        return role or "operator"
+
+    async def operator_context(
+        workspace_id: str = Depends(workspace_context),
+        role: str = Depends(role_context),
+    ) -> str:
+        if role not in {"operator", "admin"}:
+            raise HTTPException(status_code=403, detail="Operator role required")
         return workspace_id
 
     @app.get("/health")
@@ -177,7 +196,7 @@ def create_app(settings: Any | None = None) -> FastAPI:
         payload: ApiKeyCreateRequest,
         workspace_id: str = Depends(admin_context),
     ) -> ApiKeyResponse:
-        return app.state.store.create_api_key(workspace_id, payload.name)
+        return app.state.store.create_api_key(workspace_id, payload.name, payload.role)
 
     @app.post("/v1/admin/api-keys/{key_id}/rotate", response_model=ApiKeyResponse)
     async def rotate_api_key(
@@ -219,7 +238,7 @@ def create_app(settings: Any | None = None) -> FastAPI:
         source_id: str = Form(..., min_length=1, max_length=255),
         owner_person_id: str = Form(..., min_length=1, max_length=255),
         owner_name: str = Form(..., min_length=2, max_length=240),
-        workspace_id: str = Depends(workspace_context),
+        workspace_id: str = Depends(operator_context),
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ) -> CrmImportResponse:
         try:
@@ -260,7 +279,7 @@ def create_app(settings: Any | None = None) -> FastAPI:
     async def create_research(
         request: ResearchRequest,
         background_tasks: BackgroundTasks,
-        workspace_id: str = Depends(workspace_context),
+        workspace_id: str = Depends(operator_context),
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ) -> ResearchRunResponse:
         if idempotency_key is not None:
@@ -332,7 +351,7 @@ def create_app(settings: Any | None = None) -> FastAPI:
     @app.post("/v1/research/runs/{run_id}/cancel", response_model=ResearchRunResponse)
     async def cancel_research(
         run_id: UUID,
-        workspace_id: str = Depends(workspace_context),
+        workspace_id: str = Depends(operator_context),
     ) -> ResearchRunResponse:
         run = app.state.store.get(workspace_id, run_id)
         if run is None:
@@ -350,7 +369,7 @@ def create_app(settings: Any | None = None) -> FastAPI:
         run_id: UUID,
         request: ResearchClarificationRequest,
         background_tasks: BackgroundTasks,
-        workspace_id: str = Depends(workspace_context),
+        workspace_id: str = Depends(operator_context),
     ) -> ResearchRunResponse:
         run = app.state.store.requeue_with_request(workspace_id, run_id, request)
         if run is None:
