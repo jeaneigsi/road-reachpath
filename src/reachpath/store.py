@@ -7,7 +7,7 @@ import secrets
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import JSON, DateTime, String, UniqueConstraint, create_engine, select
+from sqlalchemy import Boolean, JSON, DateTime, String, UniqueConstraint, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 from sqlalchemy.pool import StaticPool
 
@@ -16,6 +16,7 @@ from .domain import (
     CrmContactResponse,
     CrmConnectionResponse,
     CrmProvider,
+    WebhookSubscriptionResponse,
     ApiKeyResponse,
     ApiKeyRole,
     AuditEventResponse,
@@ -118,6 +119,19 @@ class CrmConnectionRecord(Base):
     access_token_enc: Mapped[str] = mapped_column(String(10_000))
     refresh_token_enc: Mapped[str | None] = mapped_column(String(10_000), nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class WebhookSubscriptionRecord(Base):
+    __tablename__ = "webhook_subscriptions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(128), index=True)
+    url: Mapped[str] = mapped_column(String(2_000))
+    events_json: Mapped[list[str]] = mapped_column(JSON)
+    secret_enc: Mapped[str] = mapped_column(String(10_000))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -738,6 +752,77 @@ class RunStore:
                 deleted += 1
             session.commit()
         return deleted
+
+    def create_webhook(
+        self, workspace_id: str, url: str, events: list[str], secret_enc: str
+    ) -> WebhookSubscriptionResponse:
+        now = datetime.now(timezone.utc)
+        record = WebhookSubscriptionRecord(
+            id=str(uuid4()),
+            workspace_id=workspace_id,
+            url=url,
+            events_json=events,
+            secret_enc=secret_enc,
+            active=True,
+            created_at=now,
+            updated_at=now,
+        )
+        with Session(self.engine, expire_on_commit=False) as session:
+            session.add(record)
+            session.commit()
+        return self._webhook_response(record)
+
+    def list_webhooks(self, workspace_id: str) -> list[WebhookSubscriptionResponse]:
+        with Session(self.engine) as session:
+            records = session.scalars(
+                select(WebhookSubscriptionRecord)
+                .where(WebhookSubscriptionRecord.workspace_id == workspace_id)
+                .order_by(WebhookSubscriptionRecord.created_at.desc())
+            ).all()
+            return [self._webhook_response(record) for record in records]
+
+    def webhook_deliveries(self, workspace_id: str, event: str) -> list[dict[str, Any]]:
+        with Session(self.engine) as session:
+            records = session.scalars(
+                select(WebhookSubscriptionRecord).where(
+                    WebhookSubscriptionRecord.workspace_id == workspace_id,
+                    WebhookSubscriptionRecord.active.is_(True),
+                )
+            ).all()
+            return [
+                {
+                    "webhook_id": record.id,
+                    "url": record.url,
+                    "secret_enc": record.secret_enc,
+                }
+                for record in records
+                if event in (record.events_json or [])
+            ]
+
+    def delete_webhook(self, workspace_id: str, webhook_id: str) -> bool:
+        with Session(self.engine) as session:
+            record = session.scalar(
+                select(WebhookSubscriptionRecord).where(
+                    WebhookSubscriptionRecord.workspace_id == workspace_id,
+                    WebhookSubscriptionRecord.id == webhook_id,
+                )
+            )
+            if record is None:
+                return False
+            session.delete(record)
+            session.commit()
+            return True
+
+    @staticmethod
+    def _webhook_response(record: WebhookSubscriptionRecord) -> WebhookSubscriptionResponse:
+        return WebhookSubscriptionResponse(
+            webhook_id=record.id,
+            url=record.url,
+            events=list(record.events_json or []),
+            active=record.active,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+        )
 
     @staticmethod
     def _to_domain(record: ResearchRunRecord) -> ResearchRun:

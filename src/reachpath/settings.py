@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     pipedrive_client_secret: str | None = None
     pipedrive_redirect_uri: str | None = None
     salesforce_api_version: str = "v60.0"
+    webhook_timeout_seconds: float = 10.0
+    webhook_max_retries: int = 2
 
 
 @lru_cache

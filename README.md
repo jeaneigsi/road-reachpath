@@ -122,6 +122,13 @@ Un administrateur peut purger les runs terminés plus anciens qu'un seuil
 explicite avec `POST /v1/admin/retention/purge?older_than_days=30` ; la purge
 est limitée au workspace et inscrite dans l'audit.
 
+Les intégrations peuvent s'abonner aux événements de fin de recherche avec
+`POST /v1/webhooks` (événements `research.completed`, `research.failed` et
+`research.needs_clarification`). Le secret `whsec_...` est chiffré au repos et
+retourné une seule fois à la création. Chaque livraison porte une signature
+`X-ReachPath-Signature: sha256=...`; les erreurs sont réessayées de façon
+bornée et n'altèrent jamais le résultat de la recherche.
+
 La stratégie contient trois scénarios éditables (introduction, pertinence
 directe, insight d'abord), les formulations proposées et les limites qui
 imposent une validation humaine.

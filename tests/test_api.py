@@ -1,11 +1,17 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
+import hashlib
+import hmac
+import json
 
 from fastapi.testclient import TestClient
+from cryptography.fernet import Fernet
+import httpx
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from reachpath.api import create_app
+from reachpath.api import _dispatch_webhooks, create_app
 from reachpath.domain import UsageMetrics
 from reachpath.settings import Settings
 from reachpath.worker import drain_once
@@ -49,6 +55,45 @@ def test_admin_retention_purges_only_old_terminal_runs(tmp_path) -> None:
     assert purged.status_code == 200
     assert purged.json()["deleted_runs"] == 1
     assert api.get(f"/v1/research/runs/{run_id}").status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_webhook_secret_is_returned_once_and_delivery_is_signed(tmp_path) -> None:
+    settings = Settings(
+        database_url=f"sqlite:///{tmp_path / 'webhooks.db'}",
+        oauth_encryption_key=Fernet.generate_key().decode(),
+    )
+    application = create_app(settings)
+    api = TestClient(application)
+    created = api.post(
+        "/v1/webhooks",
+        json={"url": "https://hooks.example.test/reachpath", "events": ["research.completed"]},
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert body["secret"].startswith("whsec_")
+    listing = api.get("/v1/webhooks")
+    assert listing.status_code == 200
+    assert listing.json()[0]["secret"] is None
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        assert payload["run_id"] == "run-1"
+        expected = hmac.new(
+            body["secret"].encode(), request.content, hashlib.sha256
+        ).hexdigest()
+        assert request.headers["X-ReachPath-Signature"] == f"sha256={expected}"
+        return httpx.Response(204)
+
+    application.state.webhook_transport = httpx.MockTransport(handler)
+    await _dispatch_webhooks(
+        application,
+        "local",
+        "research.completed",
+        {"run_id": "run-1", "status": "completed"},
+    )
+    audit = api.get("/v1/audit/events").json()
+    assert any(event["action"] == "webhook.delivered" for event in audit)
 
 
 def test_frontend_origin_is_allowed_by_cors(tmp_path) -> None:

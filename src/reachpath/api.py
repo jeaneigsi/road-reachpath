@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import hmac
+import json
+import secrets
 from time import perf_counter
 from typing import Any
+from urllib.parse import urlparse
 from uuid import UUID
 
 import httpx
@@ -35,6 +41,8 @@ from .domain import (
     RunStatus,
     OAuthStartResponse,
     UsageMetrics,
+    WebhookCreateRequest,
+    WebhookSubscriptionResponse,
 )
 from .crm_oauth import CrmOAuthClient
 from .orchestrator import ProspectingOrchestrator
@@ -80,6 +88,103 @@ def _response(run: ResearchRun, workspace_id: str) -> ResearchRunResponse:
     )
 
 
+WEBHOOK_EVENTS = frozenset(
+    {"research.completed", "research.failed", "research.needs_clarification"}
+)
+
+
+def _webhook_url(url: str, environment: str) -> str:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username:
+        raise HTTPException(status_code=400, detail="Webhook URL must be an absolute HTTP(S) URL")
+    if environment == "production" and parsed.scheme != "https":
+        raise HTTPException(status_code=400, detail="Webhook URLs must use HTTPS in production")
+    return url
+
+
+async def _dispatch_webhooks(
+    app: FastAPI,
+    workspace_id: str,
+    event: str,
+    payload: dict[str, Any],
+) -> None:
+    deliveries = app.state.store.webhook_deliveries(workspace_id, event)
+    if not deliveries:
+        return
+    body = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    try:
+        cipher = app.state.crm_oauth.security()
+    except ValueError:
+        for delivery in deliveries:
+            app.state.store.record_audit(
+                workspace_id,
+                "webhook.failed",
+                "webhook",
+                delivery["webhook_id"],
+                {"event": event, "status": "failed"},
+            )
+        return
+    transport = getattr(app.state, "webhook_transport", None)
+    for delivery in deliveries:
+        try:
+            secret = cipher.decrypt(delivery["secret_enc"])
+            if not secret:
+                raise ValueError("Webhook secret is empty")
+            signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": "ReachPath-Webhook/1.0",
+                "X-ReachPath-Event": event,
+                "X-ReachPath-Delivery": delivery["webhook_id"],
+                "X-ReachPath-Signature": f"sha256={signature}",
+            }
+            delivered = False
+            async with httpx.AsyncClient(
+                timeout=app.state.settings.webhook_timeout_seconds,
+                transport=transport,
+            ) as client:
+                for attempt in range(max(0, app.state.settings.webhook_max_retries) + 1):
+                    try:
+                        response = await client.post(delivery["url"], content=body, headers=headers)
+                        if 200 <= response.status_code < 300:
+                            delivered = True
+                            break
+                    except httpx.HTTPError:
+                        pass
+                    if attempt < app.state.settings.webhook_max_retries:
+                        await asyncio.sleep(0.25 * (2**attempt))
+            app.state.store.record_audit(
+                workspace_id,
+                "webhook.delivered" if delivered else "webhook.failed",
+                "webhook",
+                delivery["webhook_id"],
+                {"event": event, "status": "delivered" if delivered else "failed"},
+            )
+        except (httpx.HTTPError, ValueError):
+            app.state.store.record_audit(
+                workspace_id,
+                "webhook.failed",
+                "webhook",
+                delivery["webhook_id"],
+                {"event": event, "status": "failed"},
+            )
+
+
+async def _safe_dispatch_webhooks(
+    app: FastAPI, workspace_id: str, event: str, payload: dict[str, Any]
+) -> None:
+    try:
+        await _dispatch_webhooks(app, workspace_id, event, payload)
+    except Exception:
+        # A webhook outage must never change the research result itself.
+        app.state.store.record_audit(
+            workspace_id,
+            "webhook.failed",
+            "webhook",
+            metadata={"event": event, "status": "dispatcher_error"},
+        )
+
+
 async def _execute(app: FastAPI, run_id: UUID, workspace_id: str) -> None:
     store: RunStore = app.state.store
     run = store.claim(workspace_id, run_id)
@@ -102,6 +207,12 @@ async def _execute(app: FastAPI, run_id: UUID, workspace_id: str) -> None:
                 str(run_id),
             )
             RESEARCH_RUNS.labels(status=RunStatus.FAILED.value).inc()
+            await _safe_dispatch_webhooks(
+                app,
+                workspace_id,
+                "research.failed",
+                {"run_id": str(run_id), "workspace_id": workspace_id, "status": "failed", "reason": "budget"},
+            )
             return
         result = await app.state.orchestrator.execute(
             run.request,
@@ -130,6 +241,17 @@ async def _execute(app: FastAPI, run_id: UUID, workspace_id: str) -> None:
             {"status": run_status.value},
         )
         RESEARCH_RUNS.labels(status=run_status.value).inc()
+        await _safe_dispatch_webhooks(
+            app,
+            workspace_id,
+            f"research.{run_status.value}",
+            {
+                "run_id": str(run_id),
+                "workspace_id": workspace_id,
+                "status": run_status.value,
+                "usage": usage.model_dump(mode="json"),
+            },
+        )
     except Exception as exc:  # boundary converts failures to observable run state
         store.update(workspace_id, run_id, status=RunStatus.FAILED, error=str(exc))
         store.record_audit(
@@ -140,6 +262,12 @@ async def _execute(app: FastAPI, run_id: UUID, workspace_id: str) -> None:
             {"error": str(exc)[:500]},
         )
         RESEARCH_RUNS.labels(status=RunStatus.FAILED.value).inc()
+        await _safe_dispatch_webhooks(
+            app,
+            workspace_id,
+            "research.failed",
+            {"run_id": str(run_id), "workspace_id": workspace_id, "status": "failed"},
+        )
 
 
 def create_app(settings: Any | None = None) -> FastAPI:
@@ -303,6 +431,59 @@ def create_app(settings: Any | None = None) -> FastAPI:
             metadata={"older_than_days": days, "deleted": deleted},
         )
         return {"workspace_id": workspace_id, "older_than_days": days, "deleted_runs": deleted}
+
+    @app.post(
+        "/v1/webhooks",
+        response_model=WebhookSubscriptionResponse,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def create_webhook(
+        payload: WebhookCreateRequest,
+        workspace_id: str = Depends(operator_context),
+    ) -> WebhookSubscriptionResponse:
+        url = _webhook_url(payload.url, settings.environment)
+        events = list(dict.fromkeys(payload.events))
+        if not events or any(event not in WEBHOOK_EVENTS for event in events):
+            raise HTTPException(
+                status_code=400,
+                detail={"allowed_events": sorted(WEBHOOK_EVENTS)},
+            )
+        try:
+            cipher = app.state.crm_oauth.security()
+        except ValueError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        secret = f"whsec_{secrets.token_urlsafe(32)}"
+        response = app.state.store.create_webhook(
+            workspace_id,
+            url,
+            events,
+            cipher.encrypt(secret) or "",
+        )
+        response.secret = secret
+        app.state.store.record_audit(
+            workspace_id,
+            "webhook.created",
+            "webhook",
+            response.webhook_id,
+            {"events": events},
+        )
+        return response
+
+    @app.get("/v1/webhooks", response_model=list[WebhookSubscriptionResponse])
+    async def list_webhooks(
+        workspace_id: str = Depends(workspace_context),
+    ) -> list[WebhookSubscriptionResponse]:
+        return app.state.store.list_webhooks(workspace_id)
+
+    @app.delete("/v1/webhooks/{webhook_id}")
+    async def delete_webhook(
+        webhook_id: str,
+        workspace_id: str = Depends(operator_context),
+    ) -> dict[str, bool]:
+        if not app.state.store.delete_webhook(workspace_id, webhook_id):
+            raise HTTPException(status_code=404, detail="Webhook not found")
+        app.state.store.record_audit(workspace_id, "webhook.deleted", "webhook", webhook_id)
+        return {"deleted": True}
 
     @app.get("/v1/usage/quota")
     async def usage_quota(workspace_id: str = Depends(workspace_context)) -> dict[str, float | str]:

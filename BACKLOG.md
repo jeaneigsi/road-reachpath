@@ -60,7 +60,7 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 - [x] Synchronisation CRM read-only à la demande et mapping vers les contacts autorisés.
 - [ ] Synchronisation périodique et webhooks entrants.
 - [x] API publique versionnée, clés d'API et scopes RBAC de base.
-- [ ] Webhooks ReachPath pour fin de recherche et rapport disponible.
+- [x] Webhooks ReachPath signés pour fin de recherche ; webhooks entrants CRM restent à livrer.
 - [ ] SDK Python et TypeScript générés depuis OpenAPI.
 
 ## P2 — frontend web

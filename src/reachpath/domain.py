@@ -102,6 +102,21 @@ class CrmSyncResponse(BaseModel):
     refreshed: bool = False
 
 
+class WebhookCreateRequest(BaseModel):
+    url: str = Field(min_length=12, max_length=2_000)
+    events: list[str] = Field(default_factory=lambda: ["research.completed"])
+
+
+class WebhookSubscriptionResponse(BaseModel):
+    webhook_id: str
+    url: str
+    events: list[str]
+    active: bool
+    created_at: datetime
+    updated_at: datetime
+    secret: str | None = None
+
+
 class ApiKeyCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     role: ApiKeyRole = ApiKeyRole.OPERATOR
