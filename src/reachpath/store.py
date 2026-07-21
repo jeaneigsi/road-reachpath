@@ -3,8 +3,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
+import secrets
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import JSON, DateTime, String, UniqueConstraint, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
@@ -13,6 +14,7 @@ from sqlalchemy.pool import StaticPool
 from .domain import (
     CrmContact,
     CrmContactResponse,
+    ApiKeyResponse,
     ResearchRequest,
     ResearchRun,
     RunStatus,
@@ -22,6 +24,19 @@ from .domain import (
 
 class Base(DeclarativeBase):
     pass
+
+
+class ApiKeyRecord(Base):
+    __tablename__ = "api_keys"
+    __table_args__ = (UniqueConstraint("key_hash"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(128), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    prefix: Mapped[str] = mapped_column(String(24))
+    key_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ResearchRunRecord(Base):
@@ -167,6 +182,88 @@ class RunStore:
     def ready(self) -> None:
         with self.engine.connect() as connection:
             connection.exec_driver_sql("SELECT 1")
+
+    @staticmethod
+    def _key_hash(token: str) -> str:
+        return sha256(token.encode("utf-8")).hexdigest()
+
+    def api_key_workspace(self, token: str) -> str | None:
+        with Session(self.engine) as session:
+            record = session.scalar(
+                select(ApiKeyRecord).where(
+                    ApiKeyRecord.key_hash == self._key_hash(token),
+                    ApiKeyRecord.revoked_at.is_(None),
+                )
+            )
+            return record.workspace_id if record else None
+
+    def create_api_key(self, workspace_id: str, name: str) -> ApiKeyResponse:
+        token = f"rp_{secrets.token_urlsafe(32)}"
+        now = datetime.now(timezone.utc)
+        record = ApiKeyRecord(
+            id=str(uuid4()),
+            workspace_id=workspace_id,
+            name=name,
+            prefix=token[:12],
+            key_hash=self._key_hash(token),
+            created_at=now,
+        )
+        with Session(self.engine, expire_on_commit=False) as session:
+            session.add(record)
+            session.commit()
+        return self._api_key_response(record, token)
+
+    def rotate_api_key(self, workspace_id: str, key_id: str) -> ApiKeyResponse | None:
+        with Session(self.engine, expire_on_commit=False) as session:
+            record = session.scalar(
+                select(ApiKeyRecord).where(
+                    ApiKeyRecord.id == key_id,
+                    ApiKeyRecord.workspace_id == workspace_id,
+                    ApiKeyRecord.revoked_at.is_(None),
+                )
+            )
+            if record is None:
+                return None
+            record.revoked_at = datetime.now(timezone.utc)
+            token = f"rp_{secrets.token_urlsafe(32)}"
+            replacement = ApiKeyRecord(
+                id=str(uuid4()),
+                workspace_id=workspace_id,
+                name=record.name,
+                prefix=token[:12],
+                key_hash=self._key_hash(token),
+                created_at=datetime.now(timezone.utc),
+            )
+            session.add(replacement)
+            session.commit()
+            return self._api_key_response(replacement, token)
+
+    def revoke_api_key(self, workspace_id: str, key_id: str) -> bool:
+        with Session(self.engine) as session:
+            record = session.scalar(
+                select(ApiKeyRecord).where(
+                    ApiKeyRecord.id == key_id,
+                    ApiKeyRecord.workspace_id == workspace_id,
+                    ApiKeyRecord.revoked_at.is_(None),
+                )
+            )
+            if record is None:
+                return False
+            record.revoked_at = datetime.now(timezone.utc)
+            session.commit()
+            return True
+
+    @staticmethod
+    def _api_key_response(record: ApiKeyRecord, token: str | None = None) -> ApiKeyResponse:
+        return ApiKeyResponse(
+            key_id=record.id,
+            workspace_id=record.workspace_id,
+            name=record.name,
+            prefix=record.prefix,
+            created_at=record.created_at,
+            revoked_at=record.revoked_at,
+            key=token,
+        )
 
     def upsert_crm_contacts(
         self, workspace_id: str, source_id: str, contacts: list[CrmContact]

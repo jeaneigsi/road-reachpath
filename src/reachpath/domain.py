@@ -58,6 +58,20 @@ class CrmImportResponse(BaseModel):
     argus_projection: dict[str, Any] | None = None
 
 
+class ApiKeyCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+class ApiKeyResponse(BaseModel):
+    key_id: str
+    workspace_id: str
+    name: str
+    prefix: str
+    created_at: datetime
+    revoked_at: datetime | None = None
+    key: str | None = None
+
+
 class ResearchRun(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     status: RunStatus = RunStatus.QUEUED

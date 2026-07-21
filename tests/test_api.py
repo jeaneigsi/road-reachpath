@@ -96,6 +96,7 @@ def test_production_auth_scopes_workspace(tmp_path) -> None:
         dry_run=True,
         require_auth=True,
         api_keys="secret-acme=acme",
+        admin_api_keys="secret-acme",
     )
     api = TestClient(create_app(settings))
     payload = {"person": "Nadia Karim", "objective": "Obtenir un rendez-vous", "dry_run": True}
@@ -107,3 +108,23 @@ def test_production_auth_scopes_workspace(tmp_path) -> None:
         "/v1/research/runs", json=payload, headers={**headers, "X-Workspace-ID": "other"}
     )
     assert mismatch.status_code == 403
+
+    created = api.post("/v1/admin/api-keys", json={"name": "frontend"}, headers=headers)
+    assert created.status_code == 201
+    generated = created.json()
+    assert generated["key"].startswith("rp_")
+    generated_headers = {
+        "Authorization": f"Bearer {generated['key']}",
+        "X-Workspace-ID": "acme",
+    }
+    assert api.get("/v1/usage/quota", headers=generated_headers).status_code == 200
+    rotated = api.post(
+        f"/v1/admin/api-keys/{generated['key_id']}/rotate", headers=headers
+    )
+    assert rotated.status_code == 200
+    assert api.get("/v1/usage/quota", headers=generated_headers).status_code == 401
+    replacement_headers = {
+        "Authorization": f"Bearer {rotated.json()['key']}",
+        "X-Workspace-ID": "acme",
+    }
+    assert api.get("/v1/usage/quota", headers=replacement_headers).status_code == 200

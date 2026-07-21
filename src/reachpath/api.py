@@ -8,6 +8,8 @@ from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPE
 
 from .crm import build_argus_bundle, parse_csv
 from .domain import (
+    ApiKeyCreateRequest,
+    ApiKeyResponse,
     CrmImportResponse,
     ResearchRequest,
     ResearchRunListResponse,
@@ -35,6 +37,14 @@ def _api_key_workspace(settings: Any, token: str) -> str | None:
         configured_token, workspace = entry.split("=", 1)
         if configured_token.strip() == token:
             return workspace.strip() or None
+    return None
+
+
+def _token_from_headers(authorization: str | None, api_key: str | None) -> str | None:
+    if api_key:
+        return api_key.strip()
+    if authorization and authorization.lower().startswith("bearer "):
+        return authorization[7:].strip()
     return None
 
 
@@ -97,17 +107,28 @@ def create_app(settings: Any | None = None) -> FastAPI:
     ) -> str:
         if not settings.require_auth:
             return _workspace(workspace_header or "local")
-        token = api_key
-        if not token and authorization and authorization.lower().startswith("bearer "):
-            token = authorization[7:].strip()
+        token = _token_from_headers(authorization, api_key)
         if not token:
             raise HTTPException(status_code=401, detail="Authentication required")
-        mapped_workspace = _api_key_workspace(settings, token)
+        mapped_workspace = app.state.store.api_key_workspace(token) or _api_key_workspace(settings, token)
         if mapped_workspace is None:
             raise HTTPException(status_code=401, detail="Invalid API key")
         if workspace_header and _workspace(workspace_header) != mapped_workspace:
             raise HTTPException(status_code=403, detail="Workspace does not match API key")
         return mapped_workspace
+
+    async def admin_context(
+        workspace_id: str = Depends(workspace_context),
+        authorization: str | None = Header(default=None, alias="Authorization"),
+        api_key: str | None = Header(default=None, alias="X-API-Key"),
+    ) -> str:
+        if not settings.require_auth:
+            return workspace_id
+        token = _token_from_headers(authorization, api_key)
+        allowed = {entry.strip() for entry in settings.admin_api_keys.split(",") if entry.strip()}
+        if token not in allowed:
+            raise HTTPException(status_code=403, detail="Admin API key required")
+        return workspace_id
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -134,6 +155,32 @@ def create_app(settings: Any | None = None) -> FastAPI:
                 "langgraph_orchestration",
             ],
         }
+
+    @app.post("/v1/admin/api-keys", response_model=ApiKeyResponse, status_code=status.HTTP_201_CREATED)
+    async def create_api_key(
+        payload: ApiKeyCreateRequest,
+        workspace_id: str = Depends(admin_context),
+    ) -> ApiKeyResponse:
+        return app.state.store.create_api_key(workspace_id, payload.name)
+
+    @app.post("/v1/admin/api-keys/{key_id}/rotate", response_model=ApiKeyResponse)
+    async def rotate_api_key(
+        key_id: str,
+        workspace_id: str = Depends(admin_context),
+    ) -> ApiKeyResponse:
+        response = app.state.store.rotate_api_key(workspace_id, key_id)
+        if response is None:
+            raise HTTPException(status_code=404, detail="API key not found")
+        return response
+
+    @app.delete("/v1/admin/api-keys/{key_id}")
+    async def revoke_api_key(
+        key_id: str,
+        workspace_id: str = Depends(admin_context),
+    ) -> dict[str, bool]:
+        if not app.state.store.revoke_api_key(workspace_id, key_id):
+            raise HTTPException(status_code=404, detail="API key not found")
+        return {"revoked": True}
 
     @app.get("/v1/usage/quota")
     async def usage_quota(workspace_id: str = Depends(workspace_context)) -> dict[str, float | str]:

@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     auto_execute: bool = True
     require_auth: bool = False
     api_keys: str = ""
+    admin_api_keys: str = ""
     database_url: str = "sqlite:///./reachpath.db"
     argus_url: str = "http://127.0.0.1:8000"
     searchswarm_url: str = "http://127.0.0.1:8012"

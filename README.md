@@ -44,6 +44,13 @@ format est `token=workspace` (plusieurs entrées séparées par des virgules). L
 token peut être envoyé avec `Authorization: Bearer <token>` ou `X-API-Key` ; un
 workspace différent de celui associé à la clé est refusé.
 
+Les clés dédiées peuvent ensuite être gérées par un bootstrap admin configuré
+dans `REACHPATH_ADMIN_API_KEYS` :
+
+- `POST /v1/admin/api-keys` — créer une clé ; le secret n’est retourné qu’une fois ;
+- `POST /v1/admin/api-keys/{key_id}/rotate` — révoquer et remplacer une clé ;
+- `DELETE /v1/admin/api-keys/{key_id}` — révoquer une clé.
+
 ## Import CRM autorisé
 
 Le backend accepte un export CSV professionnel sur
