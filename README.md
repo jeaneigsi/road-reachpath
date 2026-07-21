@@ -92,8 +92,10 @@ Les connexions du workspace sont listées par
 `DELETE /v1/connectors/crm/connections/{id}`. L'état OAuth est opaque, lié au
 workspace, à usage unique et expire après `REACHPATH_OAUTH_STATE_TTL_SECONDS`.
 Cette première tranche couvre l'autorisation et le stockage sûr ; la
-synchronisation périodique des contacts et les webhooks restent une étape
-distincte.
+synchronisation read-only à la demande se fait via
+`POST /v1/connectors/crm/connections/{id}/sync?limit=200` et projette les
+contacts autorisés dans le workspace. La synchronisation périodique et les
+webhooks restent une étape distincte.
 
 Après une recherche terminée, ReachPath expose aussi :
 

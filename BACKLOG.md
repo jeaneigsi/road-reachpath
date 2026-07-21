@@ -57,6 +57,7 @@ ReachPath aide un utilisateur à identifier une personne professionnelle, compre
 - [x] Connecteur OAuth HubSpot (connexion, refresh et révocation ; sync à venir).
 - [x] Connecteur OAuth Salesforce (connexion, refresh et révocation ; sync à venir).
 - [x] Connecteur OAuth Pipedrive (connexion, refresh et révocation ; sync à venir).
+- [x] Synchronisation CRM read-only à la demande et mapping vers les contacts autorisés.
 - [ ] Synchronisation périodique et webhooks entrants.
 - [x] API publique versionnée, clés d'API et scopes RBAC de base.
 - [ ] Webhooks ReachPath pour fin de recherche et rapport disponible.

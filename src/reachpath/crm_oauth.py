@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
 
-from .domain import CrmProvider
+from .domain import CrmContact, CrmProvider
 from .settings import Settings
 
 
@@ -150,6 +150,125 @@ class CrmOAuthClient:
             form.update({"client_id": config.client_id, "client_secret": config.client_secret})
         payload = await self._post_token(config.token_endpoint, form, headers)
         return self._token_from_payload(config.provider, payload, fallback_refresh_token=refresh_token)
+
+    async def fetch_contacts(
+        self,
+        provider: str,
+        access_token: str,
+        *,
+        api_domain: str | None = None,
+        limit: int = 200,
+    ) -> list[CrmContact]:
+        config = self.config(provider)
+        limit = max(1, min(limit, 500))
+        headers = {"Authorization": f"Bearer {access_token}"}
+        if config.provider is CrmProvider.HUBSPOT:
+            payload = await self._get_json(
+                "https://api.hubapi.com/crm/objects/2026-03/contacts",
+                headers=headers,
+                params={
+                    "limit": min(limit, 100),
+                    "properties": "firstname,lastname,email,company,jobtitle,city,country",
+                },
+            )
+            return [self._hubspot_contact(item) for item in payload.get("results", [])]
+        if config.provider is CrmProvider.SALESFORCE:
+            if not api_domain:
+                raise ValueError("Salesforce connection has no instance URL")
+            query = (
+                "SELECT Id,Name,Email,Title,Account.Name,MailingCity,MailingCountry "
+                f"FROM Contact LIMIT {limit}"
+            )
+            endpoint = f"{api_domain.rstrip('/')}/services/data/{self.settings.salesforce_api_version}/query"
+            payload = await self._get_json(endpoint, headers=headers, params={"q": query})
+            return [self._salesforce_contact(item) for item in payload.get("records", [])]
+        if not api_domain:
+            raise ValueError("Pipedrive connection has no API domain")
+        payload = await self._get_json(
+            f"{api_domain.rstrip('/')}/api/v1/persons",
+            headers=headers,
+            params={"limit": limit},
+        )
+        return [self._pipedrive_contact(item) for item in payload.get("data", [])]
+
+    async def _get_json(
+        self,
+        endpoint: str,
+        *,
+        headers: dict[str, str],
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
+        if self.http_client is not None:
+            response = await self.http_client.get(endpoint, headers=headers, params=params)
+        else:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.get(endpoint, headers=headers, params=params)
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("CRM provider returned an invalid contacts response")
+        return payload
+
+    @staticmethod
+    def _hubspot_contact(item: dict[str, Any]) -> CrmContact:
+        properties = item.get("properties") or {}
+        first = str(properties.get("firstname") or "").strip()
+        last = str(properties.get("lastname") or "").strip()
+        full_name = " ".join(part for part in (first, last) if part).strip()
+        email = str(properties.get("email") or "").strip() or None
+        return CrmContact(
+            contact_id=str(item.get("id") or email or "unknown"),
+            full_name=full_name or email or f"HubSpot contact {item.get('id', 'unknown')}",
+            email=email,
+            company_name=str(properties.get("company") or "").strip() or None,
+            job_title=str(properties.get("jobtitle") or "").strip() or None,
+            location=" / ".join(
+                part
+                for part in (str(properties.get("city") or "").strip(), str(properties.get("country") or "").strip())
+                if part
+            )
+            or None,
+        )
+
+    @staticmethod
+    def _salesforce_contact(item: dict[str, Any]) -> CrmContact:
+        account = item.get("Account") or {}
+        name = str(item.get("Name") or "").strip()
+        return CrmContact(
+            contact_id=str(item.get("Id") or name or "unknown"),
+            full_name=name or str(item.get("Email") or "Salesforce contact"),
+            email=str(item.get("Email") or "").strip() or None,
+            company_name=str(account.get("Name") or "").strip() or None,
+            job_title=str(item.get("Title") or "").strip() or None,
+            location=" / ".join(
+                part
+                for part in (
+                    str(item.get("MailingCity") or "").strip(),
+                    str(item.get("MailingCountry") or "").strip(),
+                )
+                if part
+            )
+            or None,
+        )
+
+    @staticmethod
+    def _pipedrive_contact(item: dict[str, Any]) -> CrmContact:
+        emails = item.get("email") or []
+        email = next(
+            (str(entry.get("value")).strip() for entry in emails if entry.get("value")),
+            None,
+        )
+        organization = item.get("org_id") or {}
+        if not isinstance(organization, dict):
+            organization = {}
+        return CrmContact(
+            contact_id=str(item.get("id") or email or "unknown"),
+            full_name=str(item.get("name") or email or "Pipedrive contact").strip(),
+            email=email,
+            company_name=str(organization.get("name") or "").strip() or None,
+            job_title=str(item.get("job_title") or "").strip() or None,
+            location=str(item.get("postal_address") or "").strip() or None,
+        )
 
     async def _post_token(
         self, endpoint: str, form: dict[str, str], headers: dict[str, str]

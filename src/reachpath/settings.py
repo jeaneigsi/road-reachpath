@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     pipedrive_client_id: str | None = None
     pipedrive_client_secret: str | None = None
     pipedrive_redirect_uri: str | None = None
+    salesforce_api_version: str = "v60.0"
 
 
 @lru_cache

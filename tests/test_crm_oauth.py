@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from reachpath.api import create_app
 from reachpath.crm_oauth import CrmOAuthClient, OAuthToken, TokenCipher
+from reachpath.domain import CrmContact
 from reachpath.settings import Settings
 
 
@@ -72,6 +73,53 @@ async def test_oauth_exchange_uses_form_and_parses_provider_metadata(tmp_path) -
     assert token.scope == "crm.objects.contacts.read"
 
 
+async def test_hubspot_contacts_are_mapped_to_authorized_contact_model(tmp_path) -> None:
+    settings = Settings(
+        database_url=f"sqlite:///{tmp_path / 'contacts.db'}",
+        oauth_encryption_key=Fernet.generate_key().decode(),
+        hubspot_client_id="client",
+        hubspot_client_secret="secret",
+        hubspot_redirect_uri="https://reachpath.example.com/callback",
+    )
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/crm/objects/2026-03/contacts"
+        assert request.headers["Authorization"] == "Bearer access-live"
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "id": "42",
+                        "properties": {
+                            "firstname": "Ada",
+                            "lastname": "Lovelace",
+                            "email": "ada@example.com",
+                            "company": "Analytical Engines",
+                            "jobtitle": "Founder",
+                            "city": "London",
+                            "country": "GB",
+                        },
+                    }
+                ]
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        contacts = await CrmOAuthClient(settings, http_client=http_client).fetch_contacts(
+            "hubspot", "access-live"
+        )
+    assert contacts[0].model_dump(exclude_none=True) == {
+        "contact_id": "42",
+        "full_name": "Ada Lovelace",
+        "email": "ada@example.com",
+        "company_name": "Analytical Engines",
+        "job_title": "Founder",
+        "location": "London / GB",
+        "relationship_strength": 0.7,
+    }
+
+
 def test_oauth_callback_encrypts_tokens_and_is_one_time(tmp_path, monkeypatch) -> None:
     application, api = oauth_client(tmp_path)
     start = api.get("/v1/connectors/crm/hubspot/oauth/start", headers={"X-Workspace-ID": "acme"})
@@ -103,6 +151,23 @@ def test_oauth_callback_encrypts_tokens_and_is_one_time(tmp_path, monkeypatch) -
     assert TokenCipher(application.state.settings.oauth_encryption_key).decrypt(
         encrypted["access_token_enc"]
     ) == "access-live"
+
+    async def fetch_contacts(_provider: str, _access_token: str, *, api_domain=None, limit=200):
+        assert api_domain == "https://api.hubapi.com"
+        assert limit == 200
+        return [CrmContact(contact_id="contact-1", full_name="Contact One", email="one@example.com")]
+
+    monkeypatch.setattr(application.state.crm_oauth, "fetch_contacts", fetch_contacts)
+    synced = api.post(
+        f"/v1/connectors/crm/connections/{connection_id}/sync",
+        headers={"X-Workspace-ID": "acme"},
+    )
+    assert synced.status_code == 200
+    assert synced.json()["imported"] == 1
+    contacts = api.get(
+        "/v1/connectors/crm/contacts", headers={"X-Workspace-ID": "acme"}
+    ).json()["items"]
+    assert contacts[0]["full_name"] == "Contact One"
     replay = api.get(
         "/v1/connectors/crm/hubspot/oauth/callback",
         params={"state": state, "code": "one-time-code"},

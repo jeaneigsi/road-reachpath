@@ -93,6 +93,15 @@ class OAuthStartResponse(BaseModel):
     expires_at: datetime
 
 
+class CrmSyncResponse(BaseModel):
+    connection_id: str
+    provider: CrmProvider
+    source_id: str
+    fetched: int
+    imported: int
+    refreshed: bool = False
+
+
 class ApiKeyCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     role: ApiKeyRole = ApiKeyRole.OPERATOR

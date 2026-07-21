@@ -14,6 +14,7 @@ from .domain import (
     AuditEventResponse,
     CrmConnectionResponse,
     CrmImportResponse,
+    CrmSyncResponse,
     ResearchClarificationRequest,
     ResearchRequest,
     ResearchRunListResponse,
@@ -499,6 +500,101 @@ def create_app(settings: Any | None = None) -> FastAPI:
             workspace_id, "crm.oauth_refreshed", "crm_connection", connection_id
         )
         return connection
+
+    @app.post(
+        "/v1/connectors/crm/connections/{connection_id}/sync",
+        response_model=CrmSyncResponse,
+    )
+    async def sync_crm_connection(
+        connection_id: str,
+        workspace_id: str = Depends(operator_context),
+        limit: int = 200,
+    ) -> CrmSyncResponse:
+        if not 1 <= limit <= 500:
+            raise HTTPException(status_code=400, detail="limit must be between 1 and 500")
+        secret = app.state.store.get_crm_connection_secret(workspace_id, connection_id)
+        if secret is None:
+            raise HTTPException(status_code=404, detail="CRM connection not found")
+        try:
+            from datetime import datetime, timedelta, timezone
+
+            cipher = app.state.crm_oauth.security()
+            access_token = cipher.decrypt(secret["access_token_enc"])
+            if not access_token:
+                raise ValueError("CRM access token is empty")
+            refreshed = False
+            expires_at = secret.get("expires_at")
+            if expires_at is not None and expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            is_expired = expires_at and expires_at <= datetime.now(timezone.utc) + timedelta(seconds=30)
+            if is_expired and secret.get("refresh_token_enc"):
+                refresh_token = cipher.decrypt(secret["refresh_token_enc"])
+                if refresh_token:
+                    token = await app.state.crm_oauth.refresh(secret["provider"], refresh_token)
+                    access_token = token.access_token
+                    app.state.store.update_crm_connection_tokens(
+                        workspace_id,
+                        connection_id,
+                        access_token_enc=cipher.encrypt(token.access_token) or "",
+                        refresh_token_enc=cipher.encrypt(token.refresh_token),
+                        expires_at=token.expires_at,
+                    )
+                    refreshed = True
+            try:
+                contacts = await app.state.crm_oauth.fetch_contacts(
+                    secret["provider"],
+                    access_token,
+                    api_domain=secret.get("api_domain"),
+                    limit=limit,
+                )
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code != 401 or not secret.get("refresh_token_enc"):
+                    raise
+                refresh_token = cipher.decrypt(secret["refresh_token_enc"])
+                if not refresh_token:
+                    raise
+                token = await app.state.crm_oauth.refresh(secret["provider"], refresh_token)
+                access_token = token.access_token
+                app.state.store.update_crm_connection_tokens(
+                    workspace_id,
+                    connection_id,
+                    access_token_enc=cipher.encrypt(token.access_token) or "",
+                    refresh_token_enc=cipher.encrypt(token.refresh_token),
+                    expires_at=token.expires_at,
+                )
+                contacts = await app.state.crm_oauth.fetch_contacts(
+                    secret["provider"],
+                    access_token,
+                    api_domain=secret.get("api_domain"),
+                    limit=limit,
+                )
+                refreshed = True
+            source_id = f"oauth:{secret['provider']}:{connection_id}"
+            imported = app.state.store.upsert_crm_contacts(workspace_id, source_id, contacts)
+        except (httpx.HTTPError, ValueError) as exc:
+            app.state.store.record_audit(
+                workspace_id,
+                "crm.sync_failed",
+                "crm_connection",
+                connection_id,
+                {"error": str(exc)[:200]},
+            )
+            raise HTTPException(status_code=502, detail="CRM contact sync failed") from exc
+        app.state.store.record_audit(
+            workspace_id,
+            "crm.synced",
+            "crm_connection",
+            connection_id,
+            {"fetched": len(contacts), "imported": imported, "refreshed": refreshed},
+        )
+        return CrmSyncResponse(
+            connection_id=connection_id,
+            provider=secret["provider"],
+            source_id=source_id,
+            fetched=len(contacts),
+            imported=imported,
+            refreshed=refreshed,
+        )
 
     @app.delete("/v1/connectors/crm/connections/{connection_id}")
     async def delete_crm_connection(
