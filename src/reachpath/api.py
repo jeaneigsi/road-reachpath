@@ -67,6 +67,16 @@ async def _execute(app: FastAPI, run_id: UUID, workspace_id: str) -> None:
     if run is None:
         return
     try:
+        budget = float(app.state.settings.monthly_budget_usd)
+        consumed = store.monthly_cost(workspace_id)
+        if consumed >= budget:
+            store.update(
+                workspace_id,
+                run_id,
+                status=RunStatus.FAILED,
+                error="Monthly workspace budget exhausted before execution",
+            )
+            return
         result = await app.state.orchestrator.execute(
             run.request,
             workspace_id=workspace_id,
@@ -282,6 +292,20 @@ def create_app(settings: Any | None = None) -> FastAPI:
         workspace_id: str = Depends(operator_context),
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ) -> ResearchRunResponse:
+        budget = float(settings.monthly_budget_usd)
+        consumed = app.state.store.monthly_cost(workspace_id)
+        remaining = round(budget - consumed, 6)
+        if remaining <= 0 or request.max_cost_usd > remaining:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail={
+                    "code": "monthly_budget_exceeded",
+                    "budget_usd": budget,
+                    "consumed_usd": consumed,
+                    "remaining_usd": max(0.0, remaining),
+                    "requested_max_cost_usd": request.max_cost_usd,
+                },
+            )
         if idempotency_key is not None:
             idempotency_key = idempotency_key.strip()
             if not idempotency_key:

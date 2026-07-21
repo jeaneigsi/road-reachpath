@@ -3,6 +3,7 @@ import asyncio
 from fastapi.testclient import TestClient
 
 from reachpath.api import create_app
+from reachpath.domain import UsageMetrics
 from reachpath.settings import Settings
 from reachpath.worker import drain_once
 
@@ -137,6 +138,40 @@ def test_ambiguous_run_can_be_clarified_and_restarted(tmp_path) -> None:
     )
     assert clarified.status_code == 202
     assert api.get(f"/v1/research/runs/{run_id}").json()["status"] == "completed"
+
+
+def test_research_is_rejected_when_workspace_budget_is_exhausted(tmp_path) -> None:
+    settings = Settings(
+        database_url=f"sqlite:///{tmp_path / 'budget.db'}",
+        dry_run=True,
+        monthly_budget_usd=0.10,
+    )
+    application = create_app(settings)
+    api = TestClient(application)
+    first = api.post(
+        "/v1/research/runs",
+        json={
+            "person": "Nadia Karim",
+            "objective": "Obtenir un rendez-vous",
+            "max_cost_usd": 0.10,
+            "dry_run": True,
+        },
+    )
+    run_id = first.json()["run_id"]
+    application.state.store.update(
+        "local", run_id, usage=UsageMetrics(cost_usd=0.10)
+    )
+    blocked = api.post(
+        "/v1/research/runs",
+        json={
+            "person": "Alex Martin",
+            "objective": "Obtenir un rendez-vous",
+            "max_cost_usd": 0.01,
+            "dry_run": True,
+        },
+    )
+    assert blocked.status_code == 402
+    assert blocked.json()["detail"]["code"] == "monthly_budget_exceeded"
 
 
 def test_production_auth_scopes_workspace(tmp_path) -> None:
