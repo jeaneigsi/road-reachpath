@@ -39,7 +39,7 @@ services:
   worker:
     build: .
     restart: unless-stopped
-    command: ["reachpath", "worker", "--poll-interval", "1"]
+    command: ["sh", "-c", "alembic upgrade head && reachpath worker --poll-interval 1"]
     environment:
       REACHPATH_ENVIRONMENT: production
       REACHPATH_DRY_RUN: ${REACHPATH_DRY_RUN:-false}

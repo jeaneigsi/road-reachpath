@@ -1,4 +1,4 @@
-.PHONY: install test lint serve worker compose-config compose-up
+.PHONY: install test lint migrate serve worker compose-config compose-up
 
 install:
 	python3 -m venv .venv
@@ -9,6 +9,9 @@ test:
 
 lint:
 	.venv/bin/ruff check src tests
+
+migrate:
+	.venv/bin/alembic upgrade head
 
 serve:
 	.venv/bin/uvicorn reachpath.api:app --app-dir src --host 127.0.0.1 --port 8020
