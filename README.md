@@ -123,6 +123,9 @@ Les appels vers SearchSwarm, ARGUS et ReportForge utilisent des retries bornés
 sur les erreurs transitoires (`429`, `5xx`, réseau). Les paramètres sont
 `REACHPATH_SERVICE_MAX_RETRIES` et `REACHPATH_SERVICE_RETRY_BACKOFF_SECONDS`.
 
+Chaque push sur `main` exécute la CI GitHub (`.github/workflows/ci.yml`) : tests
+et lint Python, migrations Alembic et typecheck frontend Node 22.
+
 ## Interface web
 
 Le frontend Next.js se trouve dans `frontend/`. Il utilise un proxy serveur
