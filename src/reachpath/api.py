@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+from ipaddress import ip_address
 import json
 import secrets
 from time import perf_counter
@@ -99,6 +100,15 @@ def _webhook_url(url: str, environment: str) -> str:
         raise HTTPException(status_code=400, detail="Webhook URL must be an absolute HTTP(S) URL")
     if environment == "production" and parsed.scheme != "https":
         raise HTTPException(status_code=400, detail="Webhook URLs must use HTTPS in production")
+    if environment == "production":
+        hostname = parsed.hostname.casefold()
+        if hostname in {"localhost", "localhost.localdomain"} or hostname.endswith((".local", ".internal")):
+            raise HTTPException(status_code=400, detail="Private webhook hosts are not allowed in production")
+        try:
+            if not ip_address(hostname).is_global:
+                raise HTTPException(status_code=400, detail="Private webhook hosts are not allowed in production")
+        except ValueError:
+            pass
     return url
 
 
